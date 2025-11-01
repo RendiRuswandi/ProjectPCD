@@ -17,7 +17,6 @@ st.set_page_config(
 
 # --- Fungsi Helper ---
 def pil_to_cv2(pil_image):
-    """Konversi PIL (RGB/RGBA) ke OpenCV (BGR)."""
     try:
         img_input = pil_image
         if img_input.mode == 'RGBA':
@@ -28,7 +27,6 @@ def pil_to_cv2(pil_image):
         return None
 
 def cv2_to_pil(cv2_image):
-    """Konversi OpenCV (BGR/Gray) ke PIL (RGB)."""
     try:
         if cv2_image is None: return None
         if len(cv2_image.shape) == 2: return Image.fromarray(cv2_image).convert('RGB')
@@ -39,16 +37,28 @@ def cv2_to_pil(cv2_image):
         return None
 
 def get_image_download_button(img_cv2, filename_base, operation_name):
-    """Membuat tombol download."""
     if img_cv2 is None: return
     try:
-        is_success, buffer = cv2.imencode(".png", img_cv2)
+        try:
+            base_name, ext = filename_base.rsplit('.', 1)
+            if ext.lower() not in ['png', 'jpg', 'jpeg']: ext = 'png'
+            filename = f"hasil_{operation_name.lower().replace(' ', '_')}.{ext}"
+            mime = f"image/{ext}"
+            if ext.lower() in ['jpg', 'jpeg']:
+                is_success, buffer = cv2.imencode(f".{ext}", img_cv2, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            else:
+                is_success, buffer = cv2.imencode(".png", img_cv2)
+        except ValueError:
+            filename = f"hasil_{operation_name.lower().replace(' ', '_')}.png"
+            mime = "image/png"
+            is_success, buffer = cv2.imencode(".png", img_cv2)
+
         if not is_success:
             st.error("Gagal encode gambar download.")
             return
+            
         io_buf = io.BytesIO(buffer)
-        filename = f"{filename_base}_{operation_name.lower().replace(' ', '_')}.png"
-        st.download_button(label=f"Download Hasil {operation_name} ⬇️", data=io_buf, file_name=filename, mime="image/png")
+        st.download_button(label=f"Download Hasil {operation_name} ⬇️", data=io_buf, file_name=filename, mime=mime)
     except Exception as e:
         st.error(f"Error download link: {e}")
 
@@ -83,8 +93,9 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
         mask = mask_gray.astype(np.uint8)
         if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
         _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+        
         if img.shape[:2] != mask_binary.shape[:2]:
-             st.warning("Ukuran gambar dan masker tidak cocok, mencoba resize masker...")
+             st.warning(f"Menyesuaikan ukuran masker dari {mask_binary.shape} ke {img.shape[:2]}...")
              mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
         
         if len(img.shape) == 3 and img.shape[2] == 3: # BGR
@@ -98,8 +109,8 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
 def apply_clahe(img, clip_limit, grid_size):
     try:
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(grid_size, grid_size))
-        if len(img.shape) == 2: return clahe.apply(img) # Grayscale
-        if len(img.shape) == 3: # BGR -> LAB
+        if len(img.shape) == 2: return clahe.apply(img)
+        if len(img.shape) == 3:
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
             l_enhanced = clahe.apply(l)
@@ -125,9 +136,20 @@ def apply_unsharp_mask(img, sigma, strength):
 def analyze_color_palette(img, num_colors):
     try:
         image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        pixels = image_rgb.reshape(-1, 3)
+        scale_percent = 50 
+        if image_rgb.shape[0] > 600 or image_rgb.shape[1] > 600:
+             width = int(image_rgb.shape[1] * scale_percent / 100)
+             height = int(image_rgb.shape[0] * scale_percent / 100)
+             dim = (width, height)
+             image_rgb_small = cv2.resize(image_rgb, dim, interpolation = cv2.INTER_AREA)
+        else:
+             image_rgb_small = image_rgb
+
+        pixels = image_rgb_small.reshape(-1, 3)
+        
         kmeans = KMeans(n_clusters=num_colors, n_init='auto', random_state=42)
         kmeans.fit(pixels)
+        
         dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
         unique, counts = np.unique(kmeans.labels_, return_counts=True)
         sorted_indices = np.argsort(counts)[::-1]
@@ -140,16 +162,13 @@ def analyze_color_palette(img, num_colors):
 def get_histogram(img):
     try:
         hist_data = {}
-        # Grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         hist_data['Grayscale'] = cv2.calcHist([gray], [0], None, [256], [0, 256])
-        # RGB
         color_rgb = ('b', 'g', 'r')
         hist_data['RGB'] = {}
         for i, col in enumerate(color_rgb):
             hist = cv2.calcHist([img], [i], None, [256], [0, 256])
             hist_data['RGB'][col] = hist
-        # HSV
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hist_data['HSV'] = {}
         hist_data['HSV']['H'] = cv2.calcHist([hsv], [0], None, [180], [0, 180])
@@ -167,6 +186,7 @@ st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai m
 # --- Sidebar ---
 image_pil_orig = None
 image_cv_bgr = None
+filename_for_download = "untitled.png" 
 
 with st.sidebar:
     st.title("PANEL KONTROL")
@@ -174,23 +194,24 @@ with st.sidebar:
 
     if uploaded_file:
         try:
+            filename_for_download = uploaded_file.name
             image_pil_orig = Image.open(uploaded_file)
             image_cv_bgr = pil_to_cv2(image_pil_orig)
-            # PERBAIKAN: use_column_width -> use_container_width
+            # PERBAIKAN: Gunakan use_container_width
             st.image(image_pil_orig, caption="Gambar Asli (Preview)", use_container_width=True)
         except Exception as e:
             st.error(f"Gagal memuat gambar: {e}")
-            uploaded_file = None # Reset
+            uploaded_file = None
             
+    # PERBAIKAN: use_container_width adalah benar untuk st.button
     if st.button("Reset Gambar Asli", key="reset_button", use_container_width=True, disabled=(uploaded_file is None)):
         st.info("Fitur reset masih dalam pengembangan. Silakan upload ulang gambar.")
-        # Logika reset state yang lebih kompleks bisa ditambahkan di sini
 
 # --- Area Konten Utama ---
 if uploaded_file is None or image_cv_bgr is None:
     st.info("Silakan upload gambar di sidebar untuk memulai.")
 else:
-    # Buat Tabs untuk navigasi fitur
+    # Menggunakan st.tabs (fitur baru)
     tab_filter, tab_restore, tab_enhance, tab_analyze = st.tabs([
         "🎞️ Filtering", 
         "🛠️ Restorasi", 
@@ -201,12 +222,10 @@ else:
     # --- Tab 1: Filtering ---
     with tab_filter:
         st.header("Filtering Gambar")
-        
-        # Kontrol untuk tab ini
         st.subheader("Pengaturan Filter")
         filter_type = st.radio("Pilih Filter:", ("Tidak ada", "Gaussian Blur", "Sharpen"), key="filter_radio", horizontal=True)
         
-        img_filtered = image_cv_bgr.copy() # Mulai dengan gambar asli
+        img_filtered = image_cv_bgr.copy()
         
         if filter_type == "Gaussian Blur":
             ksize_blur = st.slider("Kekuatan Blur", 1, 15, 3, key="blur_ksize_filter")
@@ -214,19 +233,17 @@ else:
         elif filter_type == "Sharpen":
             img_filtered = apply_sharpen(image_cv_bgr)
             
-        # Tampilan Perbandingan
         col1_f, col2_f = st.columns(2)
         with col1_f:
-            # PERBAIKAN: use_column_width -> use_container_width
-            fig_orig, ax_orig = plt.subplots(figsize=(8, 6))
+            fig_orig, ax_orig = plt.subplots()
             ax_orig.imshow(image_pil_orig) 
-            ax_orig.set_title(f"Original ({image_pil_orig.width}x{image_pil_orig.height})")
+            ax_orig.set_title("Original")
             ax_orig.axis('off')
+            # PERBAIKAN: 'use_container_width=True' adalah benar untuk st.pyplot
             st.pyplot(fig_orig, use_container_width=True)
             
         with col2_f:
-            # PERBAIKAN: use_column_width -> use_container_width
-            fig_res, ax_res = plt.subplots(figsize=(8, 6))
+            fig_res, ax_res = plt.subplots()
             ax_res.set_title(f"Hasil: {filter_type}")
             ax_res.axis('off')
             img_display_result = cv2_to_pil(img_filtered)
@@ -236,20 +253,19 @@ else:
                 else:
                     ax_res.imshow(np.array(img_display_result))
                 st.pyplot(fig_res, use_container_width=True)
-                get_image_download_button(img_filtered, f"hasil_{filter_type.lower()}.png", f"Download Hasil {filter_type}")
+                get_image_download_button(img_filtered, filename_for_download, filter_type)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
     # --- Tab 2: Restorasi ---
     with tab_restore:
         st.header("Restorasi Citra")
-        
-        # Gunakan Sub-Tabs untuk memisahkan restorasi standar dan interaktif
+        # Menggunakan st.tabs (fitur baru)
         subtab_denoise, subtab_inpaint = st.tabs(["Reduksi Noise", "(Unik) Inpainting Interaktif"])
         
         with subtab_denoise:
             st.subheader("Reduksi Noise")
-            restore_type = st.radio("Pilih Metode Reduksi Noise:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio", horizontal=True)
+            restore_type = st.radio("Pilih Metode:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio", horizontal=True)
             
             img_restored = image_cv_bgr.copy()
             
@@ -265,16 +281,14 @@ else:
                 
             col1_r, col2_r = st.columns(2)
             with col1_r:
-                # PERBAIKAN: use_column_width -> use_container_width
-                fig_orig, ax_orig = plt.subplots(figsize=(8, 6))
+                fig_orig, ax_orig = plt.subplots()
                 ax_orig.imshow(image_pil_orig) 
-                ax_orig.set_title(f"Original ({image_pil_orig.width}x{image_pil_orig.height})")
+                ax_orig.set_title("Original")
                 ax_orig.axis('off')
                 st.pyplot(fig_orig, use_container_width=True)
                 
             with col2_r:
-                # PERBAIKAN: use_column_width -> use_container_width
-                fig_res, ax_res = plt.subplots(figsize=(8, 6))
+                fig_res, ax_res = plt.subplots()
                 ax_res.set_title(f"Hasil: {restore_type}")
                 ax_res.axis('off')
                 img_display_result = cv2_to_pil(img_restored)
@@ -284,7 +298,7 @@ else:
                     else:
                         ax_res.imshow(np.array(img_display_result))
                     st.pyplot(fig_res, use_container_width=True)
-                    get_image_download_button(img_restored, f"hasil_{restore_type.lower()}.png", f"Download Hasil {restore_type}")
+                    get_image_download_button(img_restored, filename_for_download, restore_type)
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
@@ -297,12 +311,12 @@ else:
             with col1_i:
                 st.markdown("**Kanvas Masking** (Gambar di sini)")
                 stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
-                bg_pil = cv2_to_pil(image_cv_bgr) # Konversi BGR ke PIL RGB untuk background
+                bg_pil = cv2_to_pil(image_cv_bgr) 
                 
-                # Resize background agar pas di canvas (opsional tapi disarankan)
-                # Tentukan ukuran canvas
-                CANVAS_WIDTH = 600
-                CANVAS_HEIGHT = 400
+                aspect_ratio = bg_pil.height / bg_pil.width
+                CANVAS_WIDTH = 600 
+                CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
+                
                 if bg_pil:
                     bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
                 else:
@@ -311,8 +325,8 @@ else:
                 canvas_result_inpainting = st_canvas(
                     fill_color="rgba(255, 0, 0, 0.3)",
                     stroke_width=stroke_width_inp,
-                    stroke_color="#FF0000", # Warna masker (merah)
-                    background_image=bg_pil_resized, # Gunakan gambar yang sudah di-resize
+                    stroke_color="#FF0000", 
+                    background_image=bg_pil_resized, 
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
                     width=CANVAS_WIDTH,
@@ -327,30 +341,28 @@ else:
                 method_flag_inp = cv2.INPAINT_TELEA if method_str_inp == "TELEA" else cv2.INPAINT_NS
                 
                 img_inpainted = None
-                mask_data = None
+                mask_data_canvas = None
                 
                 if canvas_result_inpainting.image_data is not None:
-                    # Ambil channel merah sebagai masker (karena stroke merah)
-                    mask_data = canvas_result_inpainting.image_data[:, :, 0] 
+                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 0] 
                 
-                if mask_data is not None and np.sum(mask_data > 0) > 0:
+                if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
-                         # PENTING: Resize masker dari ukuran canvas (600x400) ke ukuran gambar asli
-                         mask_resized_to_orig = cv2.resize(mask_data, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
+                         mask_resized_to_orig = cv2.resize(mask_data_canvas, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                     
-                    # PERBAIKAN: use_column_width -> use_container_width
+                    # PERBAIKAN: Gunakan 'use_container_width' untuk st.image
                     st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_container_width=True)
-                    get_image_download_button(img_inpainted, "hasil_inpainting.png", "Download Hasil Inpainting")
+                    get_image_download_button(img_inpainted, filename_for_download, "Inpainting")
                 else:
-                    # PERBAIKAN: use_column_width -> use_container_width
+                    # PERBAIKAN: Gunakan 'use_container_width'
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_container_width=True)
 
     # --- Tab 3: Enhancement ---
     with tab_enhance:
-        st.header("Enhancement Citra")
+        st.header("✨ Enhancement Citra")
         st.subheader("Pengaturan Enhancement")
-        enhance_type = st.radio("Pilih Metode Enhancement:", ("Tidak ada", "Brightness / Contrast", "CLAHE (Kontras Adaptif)", "Unsharp Masking"), key="enhance_radio", horizontal=True)
+        enhance_type = st.radio("Pilih Metode:", ("Tidak ada", "Brightness / Contrast", "CLAHE", "Unsharp Masking"), key="enhance_radio", horizontal=True)
 
         img_enhanced = image_cv_bgr.copy()
 
@@ -358,7 +370,7 @@ else:
             b_enhance = st.slider("Brightness", -100, 100, 0, key="bc_brightness_enhance")
             c_enhance = st.slider("Contrast", -100, 100, 0, key="bc_contrast_enhance")
             img_enhanced = apply_brightness_contrast(image_cv_bgr, b_enhance, c_enhance)
-        elif enhance_type == "CLAHE (Kontras Adaptif)":
+        elif enhance_type == "CLAHE":
             st.info("CLAHE meningkatkan kontras lokal tanpa memperkuat noise.")
             clip_enhance = st.slider("Clip Limit", 1.0, 10.0, 2.5, 0.5, key="clahe_clip_enhance")
             grid_enhance = st.slider("Tile Grid Size", 2, 16, 8, key="clahe_grid_enhance")
@@ -369,19 +381,16 @@ else:
             strength_unsharp = st.slider("Strength (Kekuatan)", 0.1, 3.0, 1.5, 0.1, key="unsharp_strength_enhance")
             img_enhanced = apply_unsharp_mask(image_cv_bgr, sigma_unsharp, strength_unsharp)
 
-        # Tampilan Perbandingan
         col1_e, col2_e = st.columns(2)
         with col1_e:
-            # PERBAIKAN: use_column_width -> use_container_width
-            fig_orig, ax_orig = plt.subplots(figsize=(8, 6))
+            fig_orig, ax_orig = plt.subplots()
             ax_orig.imshow(image_pil_orig) 
-            ax_orig.set_title(f"Original ({image_pil_orig.width}x{image_pil_orig.height})")
+            ax_orig.set_title("Original")
             ax_orig.axis('off')
             st.pyplot(fig_orig, use_container_width=True)
             
         with col2_e:
-            # PERBAIKAN: use_column_width -> use_container_width
-            fig_res, ax_res = plt.subplots(figsize=(8, 6))
+            fig_res, ax_res = plt.subplots()
             ax_res.set_title(f"Hasil: {enhance_type}")
             ax_res.axis('off')
             img_display_result = cv2_to_pil(img_enhanced)
@@ -391,14 +400,14 @@ else:
                 else:
                     ax_res.imshow(np.array(img_display_result))
                 st.pyplot(fig_res, use_container_width=True)
-                get_image_download_button(img_enhanced, f"hasil_{enhance_type.lower().replace(' / ', '_')}.png", f"Download Hasil {enhance_type}")
+                get_image_download_button(img_enhanced, filename_for_download, enhance_type)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
 
     # --- Tab 4: Analisis (Fitur Unik) ---
     with tab_analyze:
-        st.header("Analisis Citra")
+        st.header("🎨 Analisis Citra")
         st.info("Fitur ini menganalisis gambar asli Anda tanpa mengubahnya.")
         
         col1_a, col2_a = st.columns(2)
@@ -435,7 +444,7 @@ else:
             
             if hist_data_res:
                 fig_hist, ax_hist = plt.subplots()
-                plt.style.use('dark_background')
+                plt.style.use('dark_background') 
                 ax_hist.set_xlabel("Bins")
                 ax_hist.set_ylabel("# Piksel")
 
@@ -454,7 +463,6 @@ else:
                     ax_hist.plot(hist_data_res['HSV']['H'], color='r')
                     ax_hist.set_xlim([0, 180])
                 
-                # PERBAIKAN: Menambahkan use_container_width
                 st.pyplot(fig_hist, use_container_width=True)
             else:
                 st.warning("Gagal menghitung histogram.")

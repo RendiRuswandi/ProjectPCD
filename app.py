@@ -25,10 +25,9 @@ st.markdown("<h1 style='text-align: center;'>Studio PCD Interaktif</h1>", unsafe
 st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Filter, Restorasi, dan Analisis Citra dalam Satu Aplikasi.</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Tombol Aksi Utama
+# Tombol Aksi Utama (st.link_button akan berfungsi sekarang)
 col1, col2, col3 = st.columns([1.5, 2, 1.5])
 with col2:
-    # st.link_button adalah cara paling stabil untuk navigasi
     st.link_button("Buka Studio Editor ➔", "/Studio_Editor", use_container_width=True)
 
 st.markdown(
