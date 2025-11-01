@@ -25,21 +25,27 @@ st.markdown("<h1 style='text-align: center;'>Studio PCD Interaktif</h1>", unsafe
 st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Filter, Restorasi, dan Analisis Citra dalam Satu Aplikasi.</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Tombol Aksi Utama (st.link_button akan berfungsi sekarang)
+# --- PERBAIKAN: Mengganti st.link_button dengan HTML manual ---
 col1, col2, col3 = st.columns([1.5, 2, 1.5])
 with col2:
-    st.link_button("Buka Studio Editor ➔", "/Studio_Editor", use_container_width=True)
-
-st.markdown(
-    """
-    <style>
-        /* Target tombol link button untuk membuatnya lebih besar */
-        div[data-testid="stLinkButton"] a {
+    st.markdown(
+        """
+        <a href="Studio_Editor" target="_self" style="
+            display: inline-block;
             padding: 0.75rem 1.5rem;
             font-size: 1.1rem;
             font-weight: 600;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+            color: white;
+            background-color: #007BFF; /* Warna aksen (biru) */
+            border: none;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box;
+        ">
+            Buka Studio Editor ➔
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
