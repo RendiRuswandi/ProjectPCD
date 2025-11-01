@@ -1,0 +1,392 @@
+import streamlit as st
+import cv2
+import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from streamlit_drawable_canvas import st_canvas
+import io
+import math
+
+# --- Konfigurasi Halaman ---
+st.set_page_config(
+    page_title="Studio Editor - PCD",
+    page_icon="🔬",
+    layout="wide"
+)
+
+# --- Fungsi Helper ---
+def pil_to_cv2(pil_image):
+    """Konversi PIL (RGB/RGBA) ke OpenCV (BGR)."""
+    try:
+        img_input = pil_image
+        if img_input.mode == 'RGBA':
+            img_input = img_input.convert('RGB')
+        return cv2.cvtColor(np.array(img_input), cv2.COLOR_RGB2BGR)
+    except Exception as e:
+        st.error(f"Error konversi PIL ke CV2: {e}")
+        return None
+
+def cv2_to_pil(cv2_image):
+    """Konversi OpenCV (BGR/Gray) ke PIL (RGB)."""
+    try:
+        if cv2_image is None: return None
+        if len(cv2_image.shape) == 2: return Image.fromarray(cv2_image).convert('RGB')
+        if len(cv2_image.shape) == 3: return Image.fromarray(cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB))
+        return None
+    except Exception as e:
+        st.error(f"Error konversi CV2 ke PIL: {e}")
+        return None
+
+def get_image_download_button(img_cv2, filename, label):
+    """Membuat tombol download untuk gambar OpenCV."""
+    if img_cv2 is None: return
+    try:
+        is_success, buffer = cv2.imencode(".png", img_cv2)
+        if not is_success:
+            st.error("Gagal encode gambar download.")
+            return
+        io_buf = io.BytesIO(buffer)
+        st.download_button(label=label, data=io_buf, file_name=filename, mime="image/png")
+    except Exception as e:
+        st.error(f"Error download link: {e}")
+
+# --- Fungsi PCD ---
+
+# Filtering
+def apply_gaussian_blur(img, ksize_val):
+    ksize = max(1, (ksize_val * 2) + 1)
+    try: return cv2.GaussianBlur(img, (ksize, ksize), 0)
+    except Exception as e: st.error(f"Error Gaussian Blur: {e}"); return img
+
+def apply_sharpen(img):
+    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+    try: return cv2.filter2D(img, -1, kernel)
+    except Exception as e: st.error(f"Error Sharpen: {e}"); return img
+
+# Restorasi
+def apply_median_blur(img, ksize_val):
+    ksize = max(3, ksize_val if ksize_val % 2 != 0 else ksize_val + 1)
+    try: return cv2.medianBlur(img, ksize)
+    except Exception as e: st.error(f"Error Median Blur: {e}"); return img
+
+def apply_bilateral_filter(img, d, sigma_color, sigma_space):
+    try: return cv2.bilateralFilter(img, d, sigma_color, sigma_space)
+    except Exception as e: st.error(f"Error Bilateral Filter: {e}"); return img
+
+def apply_inpainting(img, mask_gray, radius, method_flag):
+    if mask_gray is None or np.sum(mask_gray) == 0:
+        st.info("Masker inpainting kosong. Gambar area pada kanvas untuk memulai.")
+        return img
+    try:
+        mask = mask_gray.astype(np.uint8)
+        if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+        _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+        if img.shape[:2] != mask_binary.shape[:2]:
+             mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+        
+        if len(img.shape) == 3 and img.shape[2] == 3: # BGR
+            return cv2.inpaint(img, mask_binary, radius, flags=method_flag)
+        else:
+             st.warning("Inpainting hanya support gambar BGR 3-channel.")
+             return img
+    except Exception as e: st.error(f"Error Inpainting: {e}"); return img
+
+# Enhancement
+def apply_clahe(img, clip_limit, grid_size):
+    try:
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(grid_size, grid_size))
+        if len(img.shape) == 2: return clahe.apply(img)
+        if len(img.shape) == 3:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            l_enhanced = clahe.apply(l)
+            lab_enhanced = cv2.merge((l_enhanced, a, b))
+            return cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+        return img
+    except Exception as e: st.error(f"Error CLAHE: {e}"); return img
+
+def apply_brightness_contrast(img, brightness, contrast):
+    alpha = 1.0 + (contrast / 100.0); alpha = max(0.1, alpha)
+    beta = brightness
+    try: return cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+    except Exception as e: st.error(f"Error Brightness/Contrast: {e}"); return img
+
+def apply_unsharp_mask(img, sigma, strength):
+    try:
+        blurred = cv2.GaussianBlur(img, (0, 0), sigma)
+        sharpened = cv2.addWeighted(img, 1.0 + strength, blurred, -strength, 0)
+        return sharpened
+    except Exception as e: st.error(f"Error Unsharp Mask: {e}"); return img
+
+# Analisis
+def analyze_color_palette(img, num_colors):
+    try:
+        image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        pixels = image_rgb.reshape(-1, 3)
+        kmeans = KMeans(n_clusters=num_colors, n_init='auto', random_state=42)
+        kmeans.fit(pixels)
+        dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
+        unique, counts = np.unique(kmeans.labels_, return_counts=True)
+        sorted_indices = np.argsort(counts)[::-1]
+        dominant_colors_rgb = dominant_colors_rgb[sorted_indices]
+        counts = counts[sorted_indices]
+        dominant_colors_hex = [f'#{r:02x}{g:02x}{b:02x}' for r, g, b in dominant_colors_rgb]
+        return dominant_colors_hex, counts
+    except Exception as e: st.error(f"Error Analisis Palet: {e}"); return [], []
+
+def get_histogram(img):
+    try:
+        hist_data = {}
+        # Grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        hist_data['Grayscale'] = cv2.calcHist([gray], [0], None, [256], [0, 256])
+        # RGB
+        color_rgb = ('b', 'g', 'r')
+        hist_data['RGB'] = {}
+        for i, col in enumerate(color_rgb):
+            hist = cv2.calcHist([img], [i], None, [256], [0, 256])
+            hist_data['RGB'][col] = hist
+        # HSV
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        hist_data['HSV'] = {}
+        hist_data['HSV']['H'] = cv2.calcHist([hsv], [0], None, [180], [0, 180])
+        hist_data['HSV']['S'] = cv2.calcHist([hsv], [1], None, [256], [0, 256])
+        hist_data['HSV']['V'] = cv2.calcHist([hsv], [2], None, [256], [0, 256])
+        return hist_data
+    except Exception as e: st.error(f"Error Histogram: {e}"); return {}
+
+
+# --- UI STREAMLIT ---
+
+st.title("🔬 Studio Editor PCD")
+st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai mengedit.")
+
+# --- Sidebar ---
+image_pil_orig = None
+image_cv_bgr = None
+
+with st.sidebar:
+    st.title("PANEL KONTROL")
+    uploaded_file = st.file_uploader("Upload Gambar Anda di Sini", type=["jpg", "png", "jpeg"], key="uploader")
+
+    if uploaded_file:
+        try:
+            image_pil_orig = Image.open(uploaded_file)
+            image_cv_bgr = pil_to_cv2(image_pil_orig)
+            st.image(image_pil_orig, caption="Gambar Asli (Preview)", use_column_width=True)
+        except Exception as e:
+            st.error(f"Gagal memuat gambar: {e}")
+            uploaded_file = None # Reset
+            
+    if st.button("Reset Gambar Asli", key="reset_button", use_container_width=True, disabled=(uploaded_file is None)):
+        st.info("Fitur reset masih dalam pengembangan. Silakan upload ulang gambar.")
+        # Logika reset state yang lebih kompleks bisa ditambahkan di sini
+
+# --- Area Konten Utama ---
+if uploaded_file is None or image_cv_bgr is None:
+    st.info("Silakan upload gambar di sidebar untuk memulai.")
+else:
+    # Buat Tabs untuk navigasi fitur
+    tab_filter, tab_restore, tab_enhance, tab_analyze = st.tabs([
+        "🎞️ Filtering", 
+        "🛠️ Restorasi", 
+        "✨ Enhancement", 
+        "🎨 Analisis"
+    ])
+
+    # --- Tab 1: Filtering ---
+    with tab_filter:
+        st.header("Filtering Gambar")
+        
+        # Kontrol untuk tab ini
+        st.subheader("Pengaturan Filter")
+        filter_type = st.radio("Pilih Filter:", ("Tidak ada", "Gaussian Blur", "Sharpen"), key="filter_radio", horizontal=True)
+        
+        img_filtered = image_cv_bgr.copy() # Mulai dengan gambar asli
+        
+        if filter_type == "Gaussian Blur":
+            ksize_blur = st.slider("Kekuatan Blur", 1, 15, 3, key="blur_ksize_filter")
+            img_filtered = apply_gaussian_blur(image_cv_bgr, ksize_blur)
+        elif filter_type == "Sharpen":
+            img_filtered = apply_sharpen(image_cv_bgr)
+            
+        # Tampilan Perbandingan
+        col1_f, col2_f = st.columns(2)
+        with col1_f:
+            st.image(image_pil_orig, caption="Gambar Asli", use_column_width=True)
+        with col2_f:
+            st.image(cv2_to_pil(img_filtered), caption=f"Hasil: {filter_type}", use_column_width=True)
+            get_image_download_button(img_filtered, f"hasil_{filter_type.lower()}.png", f"Download Hasil {filter_type}")
+
+    # --- Tab 2: Restorasi ---
+    with tab_restore:
+        st.header("Restorasi Citra")
+        
+        # Gunakan Sub-Tabs untuk memisahkan restorasi standar dan interaktif
+        subtab_denoise, subtab_inpaint = st.tabs(["Reduksi Noise", "(Unik) Inpainting Interaktif"])
+        
+        with subtab_denoise:
+            st.subheader("Reduksi Noise")
+            restore_type = st.radio("Pilih Metode Reduksi Noise:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio", horizontal=True)
+            
+            img_restored = image_cv_bgr.copy()
+            
+            if restore_type == "Median Blur":
+                ksize_median = st.slider("Kekuatan Median", 3, 21, 5, step=2, key="median_ksize_restore")
+                img_restored = apply_median_blur(image_cv_bgr, ksize_median)
+            elif restore_type == "Bilateral Filter":
+                st.info("Bilateral Filter mengurangi noise sambil menjaga tepi tetap tajam.")
+                d_bilateral = st.slider("Diameter (d)", 1, 15, 9, key="bilateral_d_restore")
+                sc_bilateral = st.slider("Sigma Color", 1, 150, 75, key="bilateral_sc_restore")
+                ss_bilateral = st.slider("Sigma Space", 1, 150, 75, key="bilateral_ss_restore")
+                img_restored = apply_bilateral_filter(image_cv_bgr, d_bilateral, sc_bilateral, ss_bilateral)
+                
+            col1_r, col2_r = st.columns(2)
+            with col1_r:
+                st.image(image_pil_orig, caption="Gambar Asli", use_column_width=True)
+            with col2_r:
+                st.image(cv2_to_pil(img_restored), caption=f"Hasil: {restore_type}", use_column_width=True)
+                get_image_download_button(img_restored, f"hasil_{restore_type.lower()}.png", f"Download Hasil {restore_type}")
+
+        with subtab_inpaint:
+            st.subheader("Inpainting Interaktif (Hapus Area)")
+            st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
+            
+            col1_i, col2_i = st.columns(2)
+            
+            with col1_i:
+                st.markdown("**Kanvas Masking** (Gambar di sini)")
+                # Kontrol Kanvas
+                stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
+                bg_pil = cv2_to_pil(image_cv_bgr) # Konversi BGR ke PIL RGB untuk background
+                
+                # Buat Kanvas
+                canvas_result_inpainting = st_canvas(
+                    fill_color="rgba(255, 0, 0, 0.3)", # Transparan (tidak relevan untuk freedraw)
+                    stroke_width=stroke_width_inp,
+                    stroke_color="#FF0000", # Warna masker (merah)
+                    background_image=bg_pil.resize((600, 400)) if bg_pil else None, # Resize untuk display
+                    update_streamlit=True,
+                    height=400,
+                    width=600,
+                    drawing_mode="freedraw",
+                    key="canvas_inpainting",
+                )
+
+            with col2_i:
+                st.markdown("**Hasil Inpainting**")
+                # Kontrol Inpainting
+                radius_inp = st.slider("Radius Inpainting", 1, 15, 3, key="inp_radius")
+                method_str_inp = st.radio("Metode:", ("TELEA", "NS"), key="inp_method", horizontal=True)
+                method_flag_inp = cv2.INPAINT_TELEA if method_str_inp == "TELEA" else cv2.INPAINT_NS
+                
+                img_inpainted = None
+                mask_data = None
+                
+                if canvas_result_inpainting.image_data is not None:
+                    # Ambil channel merah sebagai masker (karena stroke merah)
+                    mask_data = canvas_result_inpainting.image_data[:, :, 0] 
+                
+                if mask_data is not None and np.sum(mask_data > 0) > 0:
+                    with st.spinner("Menerapkan Inpainting..."):
+                         img_inpainted = apply_inpainting(image_cv_bgr, mask_data, radius_inp, method_flag_inp)
+                    st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_column_width=True)
+                    get_image_download_button(img_inpainted, "hasil_inpainting.png", "Download Hasil Inpainting")
+                else:
+                    st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
+
+    # --- Tab 3: Enhancement ---
+    with tab_enhance:
+        st.header("Enhancement Citra")
+        
+        # Kontrol untuk tab ini
+        st.subheader("Pengaturan Enhancement")
+        enhance_type = st.radio("Pilih Metode Enhancement:", ("Tidak ada", "Brightness / Contrast", "CLAHE (Kontras Adaptif)", "Unsharp Masking"), key="enhance_radio", horizontal=True)
+
+        img_enhanced = image_cv_bgr.copy()
+
+        if enhance_type == "Brightness / Contrast":
+            b_enhance = st.slider("Brightness", -100, 100, 0, key="bc_brightness_enhance")
+            c_enhance = st.slider("Contrast", -100, 100, 0, key="bc_contrast_enhance")
+            img_enhanced = apply_brightness_contrast(image_cv_bgr, b_enhance, c_enhance)
+        elif enhance_type == "CLAHE (Kontras Adaptif)":
+            st.info("CLAHE meningkatkan kontras lokal tanpa memperkuat noise.")
+            clip_enhance = st.slider("Clip Limit", 1.0, 10.0, 2.5, 0.5, key="clahe_clip_enhance")
+            grid_enhance = st.slider("Tile Grid Size", 2, 16, 8, key="clahe_grid_enhance")
+            img_enhanced = apply_clahe(image_cv_bgr, clip_enhance, grid_enhance)
+        elif enhance_type == "Unsharp Masking":
+            st.info("Unsharp Masking menajamkan gambar berdasarkan detail yang di-blur.")
+            sigma_unsharp = st.slider("Sigma (Radius Blur)", 0.1, 5.0, 1.0, 0.1, key="unsharp_sigma_enhance")
+            strength_unsharp = st.slider("Strength (Kekuatan)", 0.1, 3.0, 1.5, 0.1, key="unsharp_strength_enhance")
+            img_enhanced = apply_unsharp_mask(image_cv_bgr, sigma_unsharp, strength_unsharp)
+
+        # Tampilan Perbandingan
+        col1_e, col2_e = st.columns(2)
+        with col1_e:
+            st.image(image_pil_orig, caption="Gambar Asli", use_column_width=True)
+        with col2_e:
+            st.image(cv2_to_pil(img_enhanced), caption=f"Hasil: {enhance_type}", use_column_width=True)
+            get_image_download_button(img_enhanced, f"hasil_{enhance_type.lower().replace(' / ', '_')}.png", f"Download Hasil {enhance_type}")
+
+    # --- Tab 4: Analisis (Fitur Unik) ---
+    with tab_analyze:
+        st.header("Analisis Citra")
+        st.info("Fitur ini menganalisis gambar asli Anda tanpa mengubahnya.")
+        
+        col1_a, col2_a = st.columns(2)
+        
+        with col1_a:
+            st.subheader("Analisis Palet Warna")
+            k_colors_analyze = st.slider("Jumlah Warna (K)", 2, 10, 5, key="k_colors_analyze")
+            
+            with st.spinner("Menganalisis palet..."):
+                dom_colors_res, counts_res = analyze_color_palette(image_cv_bgr, k_colors_analyze)
+            
+            if dom_colors_res:
+                cols_color_res = st.columns(len(dom_colors_res))
+                total_pixels_res = sum(counts_res) if counts_res is not None else 1
+                for i, color_hex_res in enumerate(dom_colors_res):
+                    with cols_color_res[i]:
+                        st.markdown(
+                            f'<div style="background-color:{color_hex_res}; width:100%; height:50px; border: 1px solid grey; margin:auto;"></div>',
+                            unsafe_allow_html=True
+                        )
+                        st.code(color_hex_res)
+                        if counts_res is not None and i < len(counts_res):
+                            percentage = (counts_res[i] / total_pixels_res) * 100
+                            st.caption(f"{percentage:.1f}%")
+            else:
+                st.warning("Gagal menganalisis palet.")
+
+        with col2_a:
+            st.subheader("Analisis Histogram")
+            hist_channel_select = st.selectbox("Pilih Channel:", ('Grayscale', 'RGB', 'HSV'), key="hist_channel_analyze")
+            
+            with st.spinner("Menghitung histogram..."):
+                hist_data_res = get_histogram(image_cv_bgr)
+            
+            if hist_data_res:
+                fig_hist, ax_hist = plt.subplots()
+                plt.style.use('dark_background') # Tema gelap untuk plot
+                ax_hist.set_xlabel("Bins")
+                ax_hist.set_ylabel("# Piksel")
+
+                if hist_channel_select == 'Grayscale':
+                    ax_hist.set_title("Histogram Grayscale")
+                    ax_hist.plot(hist_data_res['Grayscale'], color='gray')
+                    ax_hist.set_xlim([0, 256])
+                elif hist_channel_select == 'RGB':
+                    ax_hist.set_title("Histogram RGB")
+                    colors_rgb = ('b', 'g', 'r')
+                    for i, col in enumerate(colors_rgb):
+                        ax_hist.plot(hist_data_res['RGB'][col], color=col)
+                        ax_hist.set_xlim([0, 256])
+                elif hist_channel_select == 'HSV':
+                    ax_hist.set_title("Histogram HSV (Hue)")
+                    ax_hist.plot(hist_data_res['HSV']['H'], color='r')
+                    ax_hist.set_xlim([0, 180])
+                
+                st.pyplot(fig_hist)
+            else:
+                st.warning("Gagal menghitung histogram.")

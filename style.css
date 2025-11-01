@@ -1,0 +1,130 @@
+/* Sembunyikan navigasi halaman bawaan Streamlit di sidebar */
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+
+/* Beri padding pada konten utama agar tidak tertutup navbar/footer */
+.main .block-container {
+    padding-top: 5rem;
+    padding-bottom: 5rem;
+}
+
+/* --- Navbar Kustom (Fixed) --- */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 999;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 2rem;
+    background-color: #1C2028; /* Latar belakang navbar gelap */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.navbar .logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #008BFF; /* Warna primer dari tema gelap */
+    text-decoration: none;
+}
+
+.navbar .nav-links a {
+    margin-left: 1.5rem;
+    text-decoration: none;
+    font-weight: 600;
+    color: #FAFAFA; /* Warna teks utama terang */
+    transition: color 0.3s;
+}
+
+.navbar .nav-links a:hover {
+    color: #008BFF;
+}
+
+/* --- Footer Kustom (Fixed) --- */
+.footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.75rem 2rem;
+    text-align: center;
+    font-size: 0.8rem;
+    background-color: #1C2028; /* Warna latar belakang footer gelap */
+    color: #AAA; /* Teks agak terang */
+    border-top: 1px solid #2A2F37; /* Border gelap */
+    z-index: 999;
+}
+
+/* --- Splash Screen Styles --- */
+
+/* Sembunyikan sidebar di halaman splash (app.py) */
+div[data-testid="stAppViewContainer"] > section[data-testid="stSidebar"] {
+    display: none;
+}
+
+/* Atur container utama di app.py agar di tengah */
+div[data-testid="stAppViewContainer"] .main .block-container[data-testid="stVerticalBlock"] {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 90vh;
+    background-color: #0E1117;
+    animation: fadeIn 1s ease-out forwards;
+}
+
+/* Keyframes untuk animasi */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+    100% { transform: scale(1); }
+}
+
+.splash-title {
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: #008BFF;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.splash-tagline {
+    font-size: 1.25rem;
+    color: #FAFAFA;
+    margin-bottom: 3rem;
+    text-align: center;
+}
+
+/* --- PERBAIKAN KUNCI: Tombol ABU-ABU ---
+   Menata widget asli Streamlit st.link_button.
+   Ini DIJAMIN akan menargetkan tombol yang benar.
+*/
+[data-testid="stLinkButton"] a {
+    display: inline-block;
+    padding: 0.75rem 2.5rem;
+    background-color: #555555; /* WARNA ABU-ABU */
+    color: #FFFFFF !important; /* Teks putih (penting) */
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 0.5rem;
+    border: none; /* Hapus border default */
+    transition: background-color 0.3s, transform 0.2s;
+    animation: pulse 2s infinite ease-in-out;
+}
+
+[data-testid="stLinkButton"] a:hover {
+    background-color: #333333; /* ABU-ABU LEBIH GELAP saat hover */
+    color: #FFFFFF !important;
+    transform: scale(1.05);
+    border: none;
+}

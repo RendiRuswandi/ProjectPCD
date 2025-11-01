@@ -1,0 +1,18 @@
+[theme]
+# Tema dasar adalah "dark" (elegan)
+base="dark"
+
+# Warna aksen (Biru Elektrik)
+primaryColor="#007BFF" 
+
+# Latar belakang utama (sangat gelap)
+backgroundColor="#0E1117"
+
+# Latar belakang sekunder (untuk sidebar, tabs, container)
+secondaryBackgroundColor="#1C2028"
+
+# Warna teks
+textColor="#FAFAFA"
+
+# Font (menggunakan font sans-serif modern)
+font="sans serif"
