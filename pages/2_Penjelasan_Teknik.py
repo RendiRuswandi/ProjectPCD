@@ -8,7 +8,7 @@ st.set_page_config(
 
 st.title("ℹ️ Penjelasan Teknik PCD")
 st.caption("Pelajari tentang teknik-teknik yang digunakan dalam aplikasi ini.")
-st.markdown("---") # PERBAIKAN: Mengganti st.divider()
+st.divider() # st.divider() akan berfungsi sekarang
 
 # --- Filtering ---
 with st.expander("🎞️ Filtering (Gaussian Blur, Sharpen)", expanded=True):

@@ -1,7 +1,8 @@
-streamlit==1.17.0
-streamlit-drawable-canvas==0.9.3
-altair==4.2.2
+streamlit
+streamlit-drawable-canvas
 opencv-python-headless
-scikit-learn
-matplotlib
+numpy
 pillow
+matplotlib
+scikit-learn
+altair

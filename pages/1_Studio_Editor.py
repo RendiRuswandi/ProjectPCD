@@ -147,7 +147,7 @@ def analyze_color_palette(img, num_colors):
 
         pixels = image_rgb_small.reshape(-1, 3)
         
-        kmeans = KMeans(n_clusters=num_colors, n_init=10, random_state=42) # n_init=10
+        kmeans = KMeans(n_clusters=num_colors, n_init='auto', random_state=42)
         kmeans.fit(pixels)
         
         dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
@@ -179,6 +179,7 @@ def get_histogram(img):
 
 
 # --- UI STREAMLIT ---
+
 st.title("🔬 Studio Editor PCD")
 st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai mengedit.")
 
@@ -186,13 +187,6 @@ st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai m
 image_pil_orig = None
 image_cv_bgr = None
 filename_for_download = "untitled.png" 
-
-# --- Navigasi dipindahkan ke Sidebar (menggantikan st.tabs) ---
-feature_tab = st.sidebar.radio(
-    "Pilih Kategori Fitur:",
-    ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🎨 Analisis"),
-    key="feature_tab_selector"
-)
 
 with st.sidebar:
     st.title("PANEL KONTROL")
@@ -203,25 +197,31 @@ with st.sidebar:
             filename_for_download = uploaded_file.name
             image_pil_orig = Image.open(uploaded_file)
             image_cv_bgr = pil_to_cv2(image_pil_orig)
-            st.image(image_pil_orig, caption="Gambar Asli (Preview)", use_column_width=True)
+            st.image(image_pil_orig, caption="Gambar Asli (Preview)", use_container_width=True)
         except Exception as e:
             st.error(f"Gagal memuat gambar: {e}")
             uploaded_file = None
             
-    if st.button("Reset Gambar Asli", key="reset_button", disabled=(uploaded_file is None)):
+    if st.button("Reset Gambar Asli", key="reset_button", use_container_width=True, disabled=(uploaded_file is None)):
         st.info("Fitur reset masih dalam pengembangan. Silakan upload ulang gambar.")
 
 # --- Area Konten Utama ---
 if uploaded_file is None or image_cv_bgr is None:
     st.info("Silakan upload gambar di sidebar untuk memulai.")
 else:
-    # --- Gunakan if/elif berdasarkan st.sidebar.radio ---
+    # Menggunakan st.tabs (fitur baru)
+    tab_filter, tab_restore, tab_enhance, tab_analyze = st.tabs([
+        "🎞️ Filtering", 
+        "🛠️ Restorasi", 
+        "✨ Enhancement", 
+        "🎨 Analisis"
+    ])
 
-    # --- Tampilan 1: Filtering ---
-    if feature_tab == "🎞️ Filtering":
-        st.header("🎞️ Filtering Gambar")
+    # --- Tab 1: Filtering ---
+    with tab_filter:
+        st.header("Filtering Gambar")
         st.subheader("Pengaturan Filter")
-        filter_type = st.radio("Pilih Filter:", ("Tidak ada", "Gaussian Blur", "Sharpen"), key="filter_radio")
+        filter_type = st.radio("Pilih Filter:", ("Tidak ada", "Gaussian Blur", "Sharpen"), key="filter_radio", horizontal=True)
         
         img_filtered = image_cv_bgr.copy()
         
@@ -237,7 +237,7 @@ else:
             ax_orig.imshow(image_pil_orig) 
             ax_orig.set_title("Original")
             ax_orig.axis('off')
-            st.pyplot(fig_orig) # Hapus use_column_width
+            st.pyplot(fig_orig, use_container_width=True)
             
         with col2_f:
             fig_res, ax_res = plt.subplots()
@@ -249,20 +249,20 @@ else:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
-                st.pyplot(fig_res) # Hapus use_column_width
+                st.pyplot(fig_res, use_container_width=True)
                 get_image_download_button(img_filtered, filename_for_download, filter_type)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-    # --- Tampilan 2: Restorasi ---
-    elif feature_tab == "🛠️ Restorasi":
-        st.header("🛠️ Restorasi Citra")
+    # --- Tab 2: Restorasi ---
+    with tab_restore:
+        st.header("Restorasi Citra")
+        # Menggunakan st.tabs (fitur baru)
+        subtab_denoise, subtab_inpaint = st.tabs(["Reduksi Noise", "(Unik) Inpainting Interaktif"])
         
-        restore_mode = st.radio("Pilih Mode Restorasi:", ["Reduksi Noise", "(Unik) Inpainting Interaktif"], key="restore_mode_radio")
-        
-        if restore_mode == "Reduksi Noise":
+        with subtab_denoise:
             st.subheader("Reduksi Noise")
-            restore_type = st.radio("Pilih Metode:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio")
+            restore_type = st.radio("Pilih Metode:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio", horizontal=True)
             
             img_restored = image_cv_bgr.copy()
             
@@ -282,7 +282,7 @@ else:
                 ax_orig.imshow(image_pil_orig) 
                 ax_orig.set_title("Original")
                 ax_orig.axis('off')
-                st.pyplot(fig_orig) # Hapus use_column_width
+                st.pyplot(fig_orig, use_container_width=True)
                 
             with col2_r:
                 fig_res, ax_res = plt.subplots()
@@ -294,12 +294,12 @@ else:
                         ax_res.imshow(np.array(img_display_result), cmap='gray')
                     else:
                         ax_res.imshow(np.array(img_display_result))
-                    st.pyplot(fig_res) # Hapus use_column_width
+                    st.pyplot(fig_res, use_container_width=True)
                     get_image_download_button(img_restored, filename_for_download, restore_type)
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        elif restore_mode == "(Unik) Inpainting Interaktif":
+        with subtab_inpaint:
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
             
@@ -311,7 +311,7 @@ else:
                 bg_pil = cv2_to_pil(image_cv_bgr) 
                 
                 aspect_ratio = bg_pil.height / bg_pil.width
-                CANVAS_WIDTH = 600
+                CANVAS_WIDTH = 600 
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
                 
                 if bg_pil:
@@ -334,7 +334,7 @@ else:
             with col2_i:
                 st.markdown("**Hasil Inpainting**")
                 radius_inp = st.slider("Radius Inpainting", 1, 15, 3, key="inp_radius")
-                method_str_inp = st.radio("Metode:", ("TELEA", "NS"), key="inp_method")
+                method_str_inp = st.radio("Metode:", ("TELEA", "NS"), key="inp_method", horizontal=True)
                 method_flag_inp = cv2.INPAINT_TELEA if method_str_inp == "TELEA" else cv2.INPAINT_NS
                 
                 img_inpainted = None
@@ -348,16 +348,16 @@ else:
                          mask_resized_to_orig = cv2.resize(mask_data_canvas, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                     
-                    st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_column_width=True)
+                    st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_container_width=True)
                     get_image_download_button(img_inpainted, filename_for_download, "Inpainting")
                 else:
-                    st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
+                    st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_container_width=True)
 
-    # --- Tampilan 3: Enhancement ---
-    elif feature_tab == "✨ Enhancement":
+    # --- Tab 3: Enhancement ---
+    with tab_enhance:
         st.header("✨ Enhancement Citra")
         st.subheader("Pengaturan Enhancement")
-        enhance_type = st.radio("Pilih Metode:", ("Tidak ada", "Brightness / Contrast", "CLAHE", "Unsharp Masking"), key="enhance_radio")
+        enhance_type = st.radio("Pilih Metode:", ("Tidak ada", "Brightness / Contrast", "CLAHE", "Unsharp Masking"), key="enhance_radio", horizontal=True)
 
         img_enhanced = image_cv_bgr.copy()
 
@@ -382,7 +382,7 @@ else:
             ax_orig.imshow(image_pil_orig) 
             ax_orig.set_title("Original")
             ax_orig.axis('off')
-            st.pyplot(fig_orig) # Hapus use_column_width
+            st.pyplot(fig_orig, use_container_width=True)
             
         with col2_e:
             fig_res, ax_res = plt.subplots()
@@ -394,72 +394,70 @@ else:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
-                st.pyplot(fig_res) # Hapus use_column_width
+                st.pyplot(fig_res, use_container_width=True)
                 get_image_download_button(img_enhanced, filename_for_download, enhance_type)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
 
-    # --- Tampilan 4: Analisis (Fitur Unik) ---
-    elif feature_tab == "🎨 Analisis":
+    # --- Tab 4: Analisis (Fitur Unik) ---
+    with tab_analyze:
         st.header("🎨 Analisis Citra")
         st.info("Fitur ini menganalisis gambar asli Anda tanpa mengubahnya.")
         
-        # --- PERBAIKAN: Hapus kolom luar (col1_a, col2_a) ---
+        col1_a, col2_a = st.columns(2)
         
-        st.subheader("Analisis Palet Warna")
-        k_colors_analyze = st.slider("Jumlah Warna (K)", 2, 10, 5, key="k_colors_analyze")
-        
-        with st.spinner("Menganalisis palet..."):
-            dom_colors_res, counts_res = analyze_color_palette(image_cv_bgr, k_colors_analyze)
-        
-        if dom_colors_res:
-            # Ini sekarang adalah satu-satunya 'st.columns' dan tidak nested
-            cols_color_res = st.columns(len(dom_colors_res)) 
-            total_pixels_res = sum(counts_res) if counts_res is not None else 1
-            for i, color_hex_res in enumerate(dom_colors_res):
-                with cols_color_res[i]:
-                    st.markdown(
-                        f'<div style="background-color:{color_hex_res}; width:100%; height:50px; border: 1px solid grey; margin:auto;"></div>',
-                        unsafe_allow_html=True
-                    )
-                    st.code(color_hex_res)
-                    if counts_res is not None and i < len(counts_res):
-                        percentage = (counts_res[i] / total_pixels_res) * 100
-                        st.caption(f"{percentage:.1f}%")
-        else:
-            st.warning("Gagal menganalisis palet.")
-
-        st.markdown("---") # Pemisah visual
-
-        st.subheader("Analisis Histogram")
-        hist_channel_select = st.selectbox("Pilih Channel:", ('Grayscale', 'RGB', 'HSV'), key="hist_channel_analyze")
-        
-        with st.spinner("Menghitung histogram..."):
-            hist_data_res = get_histogram(image_cv_bgr)
-        
-        if hist_data_res:
-            fig_hist, ax_hist = plt.subplots()
-            plt.style.use('dark_background') 
-            ax_hist.set_xlabel("Bins")
-            ax_hist.set_ylabel("# Piksel")
-
-            if hist_channel_select == 'Grayscale':
-                ax_hist.set_title("Histogram Grayscale")
-                ax_hist.plot(hist_data_res['Grayscale'], color='gray')
-                ax_hist.set_xlim([0, 256])
-            elif hist_channel_select == 'RGB':
-                ax_hist.set_title("Histogram RGB")
-                colors_rgb = ('b', 'g', 'r')
-                for i, col in enumerate(colors_rgb):
-                    ax_hist.plot(hist_data_res['RGB'][col], color=col)
-                    ax_hist.set_xlim([0, 256])
-            elif hist_channel_select == 'HSV':
-                ax_hist.set_title("Histogram HSV (Hue)")
-                ax_hist.plot(hist_data_res['HSV']['H'], color='r')
-                ax_hist.set_xlim([0, 180])
+        with col1_a:
+            st.subheader("Analisis Palet Warna")
+            k_colors_analyze = st.slider("Jumlah Warna (K)", 2, 10, 5, key="k_colors_analyze")
             
-            # PERBAIKAN: Hapus use_column_width
-            st.pyplot(fig_hist)
-        else:
-            st.warning("Gagal menghitung histogram.")
+            with st.spinner("Menganalisis palet..."):
+                dom_colors_res, counts_res = analyze_color_palette(image_cv_bgr, k_colors_analyze)
+            
+            if dom_colors_res:
+                cols_color_res = st.columns(len(dom_colors_res))
+                total_pixels_res = sum(counts_res) if counts_res is not None else 1
+                for i, color_hex_res in enumerate(dom_colors_res):
+                    with cols_color_res[i]:
+                        st.markdown(
+                            f'<div style="background-color:{color_hex_res}; width:100%; height:50px; border: 1px solid grey; margin:auto;"></div>',
+                            unsafe_allow_html=True
+                        )
+                        st.code(color_hex_res)
+                        if counts_res is not None and i < len(counts_res):
+                            percentage = (counts_res[i] / total_pixels_res) * 100
+                            st.caption(f"{percentage:.1f}%")
+            else:
+                st.warning("Gagal menganalisis palet.")
+
+        with col2_a:
+            st.subheader("Analisis Histogram")
+            hist_channel_select = st.selectbox("Pilih Channel:", ('Grayscale', 'RGB', 'HSV'), key="hist_channel_analyze")
+            
+            with st.spinner("Menghitung histogram..."):
+                hist_data_res = get_histogram(image_cv_bgr)
+            
+            if hist_data_res:
+                fig_hist, ax_hist = plt.subplots()
+                plt.style.use('dark_background') 
+                ax_hist.set_xlabel("Bins")
+                ax_hist.set_ylabel("# Piksel")
+
+                if hist_channel_select == 'Grayscale':
+                    ax_hist.set_title("Histogram Grayscale")
+                    ax_hist.plot(hist_data_res['Grayscale'], color='gray')
+                    ax_hist.set_xlim([0, 256])
+                elif hist_channel_select == 'RGB':
+                    ax_hist.set_title("Histogram RGB")
+                    colors_rgb = ('b', 'g', 'r')
+                    for i, col in enumerate(colors_rgb):
+                        ax_hist.plot(hist_data_res['RGB'][col], color=col)
+                        ax_hist.set_xlim([0, 256])
+                elif hist_channel_select == 'HSV':
+                    ax_hist.set_title("Histogram HSV (Hue)")
+                    ax_hist.plot(hist_data_res['HSV']['H'], color='r')
+                    ax_hist.set_xlim([0, 180])
+                
+                st.pyplot(fig_hist, use_container_width=True)
+            else:
+                st.warning("Gagal menghitung histogram.")
