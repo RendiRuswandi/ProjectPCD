@@ -1,5 +1,4 @@
-# WAJIB: Paksa Streamlit Cloud menggunakan Python 3.11 (Stabil)
-# Ini akan memperbaiki error "image_to_url" di Cloud
+# WAJIB: Paksa Cloud menggunakan Python 3.11 (Stabil)
 python-version == "3.11"
 
 # Daftar library (biarkan pip mencari versi terbaru yang kompatibel)
