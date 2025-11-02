@@ -1,8 +1,10 @@
-## req
+# Paksa Cloud menggunakan Python 3.11 (Stabil)
 python-version == "3.11"
 
+# Daftar library
 streamlit
-streamlit-drawable-canvas
+# PERBAIKAN KUNCI: Paksa pip menginstal v0.10.0 atau lebih baru
+streamlit-drawable-canvas>=0.10.0
 opencv-python-headless
 numpy
 pillow
