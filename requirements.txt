@@ -1,3 +1,6 @@
+# Hapus baris 'python-version' dari sini.
+
+# Daftar library
 streamlit
 # PERBAIKAN KUNCI: Paksa pip menginstal v0.10.0 atau lebih baru
 streamlit-drawable-canvas>=0.10.0
