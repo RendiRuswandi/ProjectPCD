@@ -460,4 +460,4 @@ else:
                 
                 st.pyplot(fig_hist, use_container_width=True)
             else:
-                st.warning("Gagal menghitung histogram.")
+                st.warning("Gagal memproses gambar untuk ditampilkan.")
