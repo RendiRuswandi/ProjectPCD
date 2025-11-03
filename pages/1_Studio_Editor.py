@@ -7,6 +7,7 @@ from sklearn.cluster import KMeans
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
+import base64 # <-- IMPORT BARU
 
 # --- Konfigurasi Halaman ---
 st.set_page_config(
@@ -35,6 +36,18 @@ def cv2_to_pil(cv2_image):
     except Exception as e:
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
+
+# --- FUNGSI HELPER BARU UNTUK MEMPERBAIKI KANVAS ---
+def pil_to_base64(pil_image):
+    """Konversi PIL Image ke base64 data URL."""
+    # Pastikan RGBA untuk format PNG
+    if pil_image.mode != 'RGBA':
+        pil_image = pil_image.convert('RGBA')
+    
+    buffered = io.BytesIO()
+    pil_image.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{img_str}"
 
 def get_image_download_button(img_cv2, filename_base, operation_name):
     if img_cv2 is None: return
@@ -376,26 +389,22 @@ else:
                 stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
                 
                 # --- PERBAIKAN 3.1: BACKGROUND KANVAS INPAINTING ---
-                # Gunakan 'image_pil_orig' (PIL Asli)
                 bg_pil = image_pil_orig.copy()
-                
                 aspect_ratio = bg_pil.height / bg_pil.width
                 CANVAS_WIDTH = 600
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
-                
-                # Resize PIL image
                 bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
                 
-                # Pastikan formatnya RGBA untuk st_canvas v0.9.3
+                # Ubah ke RGBA dan konversi ke base64
                 if bg_pil_resized.mode != 'RGBA':
                     bg_pil_resized = bg_pil_resized.convert('RGBA')
+                bg_url = pil_to_base64(bg_pil_resized) # <-- PERBAIKAN
                 
-                # `stroke_color` mengontrol warna coretan saat `drawing_mode="freedraw"`
                 canvas_result_inpainting = st_canvas(
-                    fill_color="rgba(0, 0, 0, 0)", # Jangan isi bentuk
+                    fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
                     stroke_width=stroke_width_inp,
-                    stroke_color="rgba(255, 0, 0, 0.7)", # Coretan MERAH TRANSLUSEN
-                    background_image=bg_pil_resized, # SEKARANG HARUSNYA MUNCUL
+                    stroke_color="rgba(0, 0, 0, 0)", 
+                    background_image=bg_url, # <-- PERBAIKAN
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
                     width=CANVAS_WIDTH,
@@ -414,15 +423,11 @@ else:
                 
                 if canvas_result_inpainting.image_data is not None:
                     # --- PERBAIKAN 3.2: LOGIKA MASKER INPAINTING ---
-                    # Coretan (merah transparan) ada di channel Alpha (indeks 3)
                     # Ambil channel Alpha
                     mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
-                # Cek apakah ada piksel yang di-masker (apakah ada coretan)
-                # (Alpha > 0)
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
-                         # Buat masker biner (0 atau 255) dari channel Alpha
                          mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
                          mask_resized_to_orig = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
@@ -453,8 +458,11 @@ else:
                 CANVAS_WIDTH_DB = 600
                 CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
                 bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
+                
+                # Ubah ke RGBA dan konversi ke base64
                 if bg_pil_resized_db.mode != 'RGBA':
                     bg_pil_resized_db = bg_pil_resized_db.convert('RGBA')
+                bg_url_db = pil_to_base64(bg_pil_resized_db) # <-- PERBAIKAN
                 
                 # Ubah warna coretan berdasarkan mode
                 stroke_color_db = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
@@ -463,7 +471,7 @@ else:
                     fill_color="rgba(0, 0, 0, 0)", # Jangan isi bentuk
                     stroke_width=stroke_width_db,
                     stroke_color=stroke_color_db, # WARNA CORETAN
-                    background_image=bg_pil_resized_db, # SEKARANG HARUSNYA MUNCUL
+                    background_image=bg_url_db, # <-- PERBAIKAN
                     update_streamlit=True,
                     height=CANVAS_HEIGHT_DB,
                     width=CANVAS_WIDTH_DB,
@@ -484,23 +492,14 @@ else:
 
                 if mask_data_db is not None and np.sum(mask_data_db > 0) > 0:
                     with st.spinner("Menerapkan Dodge/Burn..."):
-                        # Tentukan kekuatan (positif untuk dodge, negatif untuk burn)
                         strength = db_strength if db_mode == "Dodge (Mencerahkan)" else -db_strength
-                        
-                        # Buat versi gambar yang sudah difilter
                         image_filtered = apply_brightness_contrast(image_cv_bgr, strength, 0)
                         
-                        # Siapkan masker
-                        # Ambil masker dari alpha channel dan resize
                         mask_for_cv2 = ((mask_data_db > 0).astype(np.uint8) * 255)
                         mask_resized = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]))
                         
-                        # Ubah masker ke 3 channel (agar bisa menggabung gambar warna)
                         mask_3channel = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR) > 0
                         
-                        # Gabungkan gambar
-                        # Di mana ada masker (True), ambil dari image_filtered.
-                        # Di mana tidak ada masker (False), ambil dari image_cv_bgr (original).
                         img_db_result = np.where(mask_3channel, image_filtered, image_cv_bgr)
 
                     st.image(cv2_to_pil(img_db_result), caption="Hasil Dodge & Burn", use_column_width=True)
@@ -554,46 +553,39 @@ else:
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-    # --- Tampilan 4: Transformasi (DIPERBARUI) ---
+    # --- Tampilan 4: Transformasi ---
     elif feature_tab == "🔄 Transformasi":
         st.header("🔄 Transformasi Gambar")
         
-        # --- Bagian Rotasi ---
         st.subheader("Rotasi (Putar Gambar)")
         angle = st.slider("Sudut Rotasi (Searah Jarum Jam)", -180, 180, 0, 1, key="rotation_angle")
         
-        # --- Bagian Flip (BARU) ---
         st.subheader("Flip (Cermin)")
         flip_type = st.radio("Pilih Tipe Flip:", 
                              ("Tidak ada", "Horizontal (Kiri/Kanan)", "Vertikal (Atas/Bawah)"), 
                              key="flip_radio") 
         
-        # Terapkan transformasi secara berurutan
         img_transformed = image_cv_bgr.copy()
         operation_name = "Transformasi"
         
-        # 1. Terapkan Rotasi (jika ada)
         if angle != 0:
             img_transformed = apply_rotation(img_transformed, angle)
             operation_name = f"Rotasi {angle}°"
         
-        # 2. Terapkan Flip (jika ada) ke gambar yang *sudah* dirotasi
         final_img = img_transformed 
         
         if flip_type == "Horizontal (Kiri/Kanan)":
-            final_img = apply_flip(img_transformed, 1) # 1 untuk Y-axis (depan/belakang)
+            final_img = apply_flip(img_transformed, 1) 
             operation_name = "Flip Horizontal"
         elif flip_type == "Vertikal (Atas/Bawah)":
-            final_img = apply_flip(img_transformed, 0) # 0 untuk X-axis
+            final_img = apply_flip(img_transformed, 0) 
             operation_name = "Flip Vertikal"
         
-        # Buat nama yang dinamis
         if angle != 0 and flip_type != "Tidak ada":
              operation_name = f"Rotasi {angle}° & {flip_type.split(' ')[0]}"
         elif angle != 0:
              operation_name = f"Rotasi {angle}°"
         
-        # Tampilkan hasil
         col1_t, col2_t = st.columns(2)
         with col1_t:
             st.markdown("**Original**")
@@ -617,7 +609,6 @@ else:
                 get_image_download_button(final_img, filename_for_download, operation_name)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
-
 
     # --- Tampilan 5: Analisis (Fitur Unik) ---
     elif feature_tab == "🎨 Analisis":
@@ -646,7 +637,7 @@ else:
         else:
             st.warning("Gagal menganalisis palet.")
 
-        st.markdown("---") # Pemisah visual
+        st.markdown("---") 
 
         st.subheader("Analisis Histogram")
         hist_channel_select = st.selectbox("Pilih Channel:", ('Grayscale', 'RGB', 'HSV'), key="hist_channel_analyze")
