@@ -1,8 +1,6 @@
-# WAJIB: Paksa Streamlit Cloud menggunakan Python 3.11 (Stabil)
-# Ini akan memperbaiki error "image_to_url" di Cloud
-python-version == "3.11"
+# Hapus baris 'python-version' dari sini.
 
-# Daftar library (biarkan pip mencari versi terbaru yang kompatibel)
+# Daftar library
 streamlit
 # PERBAIKAN KUNCI: Paksa pip menginstal v0.10.0 atau lebih baru
 streamlit-drawable-canvas>=0.10.0
