@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Fungsi Helper ---
+# --- Fungsi Helper (Tetap sama) ---
 def pil_to_cv2(pil_image):
     try:
         img_input = pil_image
@@ -62,9 +62,7 @@ def get_image_download_button(img_cv2, filename_base, operation_name):
     except Exception as e:
         st.error(f"Error download link: {e}")
 
-# --- Fungsi PCD ---
-
-# Filtering
+# --- Fungsi PCD (Tetap sama) ---
 def apply_gaussian_blur(img, ksize_val):
     ksize = max(1, (ksize_val * 2) + 1)
     try: return cv2.GaussianBlur(img, (ksize, ksize), 0)
@@ -75,7 +73,40 @@ def apply_sharpen(img):
     try: return cv2.filter2D(img, -1, kernel)
     except Exception as e: st.error(f"Error Sharpen: {e}"); return img
 
-# Restorasi
+def apply_sepia(img):
+    try:
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        kernel = np.array([
+            [0.393, 0.769, 0.189],
+            [0.349, 0.686, 0.168],
+            [0.272, 0.534, 0.131]
+        ])
+        sepia_img_rgb = cv2.transform(img_rgb, kernel)
+        sepia_img_rgb = np.clip(sepia_img_rgb, 0, 255)
+        sepia_img_bgr = cv2.cvtColor(sepia_img_rgb.astype(np.uint8), cv2.COLOR_RGB2BGR)
+        return sepia_img_bgr
+    except Exception as e: 
+        st.error(f"Error Sepia: {e}"); return img
+
+def apply_cold_warm(img, slider_val):
+    if slider_val == 0:
+        return img
+    try:
+        identity_lut = np.arange(256, dtype=np.uint8)
+        val = slider_val * 0.5
+        warm_lut = np.clip(identity_lut + val, 0, 255).astype(np.uint8)
+        cold_lut = np.clip(identity_lut - val, 0, 255).astype(np.uint8)
+        b, g, r = cv2.split(img)
+        if slider_val > 0: # Hangat
+            r = cv2.LUT(r, warm_lut)
+            b = cv2.LUT(b, cold_lut)
+        else: # Dingin
+            r = cv2.LUT(r, cold_lut)
+            b = cv2.LUT(b, warm_lut)
+        return cv2.merge((b, g, r))
+    except Exception as e: 
+        st.error(f"Error Koreksi Warna: {e}"); return img
+
 def apply_median_blur(img, ksize_val):
     ksize = max(3, ksize_val if ksize_val % 2 != 0 else ksize_val + 1)
     try: return cv2.medianBlur(img, ksize)
@@ -93,19 +124,15 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
         mask = mask_gray.astype(np.uint8)
         if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
         _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
-        
         if img.shape[:2] != mask_binary.shape[:2]:
-             st.warning(f"Menyesuaikan ukuran masker dari {mask_binary.shape} ke {img.shape[:2]}...")
              mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
-        
-        if len(img.shape) == 3 and img.shape[2] == 3: # BGR
+        if len(img.shape) == 3 and img.shape[2] == 3:
             return cv2.inpaint(img, mask_binary, radius, flags=method_flag)
         else:
              st.warning("Inpainting hanya support gambar BGR 3-channel.")
              return img
     except Exception as e: st.error(f"Error Inpainting: {e}"); return img
 
-# Enhancement
 def apply_clahe(img, clip_limit, grid_size):
     try:
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(grid_size, grid_size))
@@ -132,7 +159,23 @@ def apply_unsharp_mask(img, sigma, strength):
         return sharpened
     except Exception as e: st.error(f"Error Unsharp Mask: {e}"); return img
 
-# Analisis
+def apply_rotation(img, angle):
+    if angle == 0:
+        return img
+    try:
+        (h, w) = img.shape[:2]
+        (cX, cY) = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+        cos = np.abs(M[0, 0])
+        sin = np.abs(M[0, 1])
+        nW = int((h * sin) + (w * cos))
+        nH = int((h * cos) + (w * sin))
+        M[0, 2] += (nW / 2) - cX
+        M[1, 2] += (nH / 2) - cY
+        return cv2.warpAffine(img, M, (nW, nH))
+    except Exception as e: 
+        st.error(f"Error Rotasi: {e}"); return img
+
 def analyze_color_palette(img, num_colors):
     try:
         image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -144,12 +187,9 @@ def analyze_color_palette(img, num_colors):
              image_rgb_small = cv2.resize(image_rgb, dim, interpolation = cv2.INTER_AREA)
         else:
              image_rgb_small = image_rgb
-
         pixels = image_rgb_small.reshape(-1, 3)
-        
-        kmeans = KMeans(n_clusters=num_colors, n_init=10, random_state=42) # n_init=10
+        kmeans = KMeans(n_clusters=num_colors, n_init=10, random_state=42)
         kmeans.fit(pixels)
-        
         dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
         unique, counts = np.unique(kmeans.labels_, return_counts=True)
         sorted_indices = np.argsort(counts)[::-1]
@@ -177,7 +217,6 @@ def get_histogram(img):
         return hist_data
     except Exception as e: st.error(f"Error Histogram: {e}"); return {}
 
-
 # --- UI STREAMLIT ---
 st.title("🔬 Studio Editor PCD")
 st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai mengedit.")
@@ -187,13 +226,7 @@ image_pil_orig = None
 image_cv_bgr = None
 filename_for_download = "untitled.png" 
 
-# --- PERBAIKAN: Pindahkan navigasi ke Sidebar (menggantikan st.tabs) ---
-feature_tab = st.sidebar.radio(
-    "Pilih Kategori Fitur:",
-    ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🎨 Analisis"),
-    key="feature_tab_selector"
-)
-
+# --- Sidebar (Hanya untuk upload) ---
 with st.sidebar:
     st.title("PANEL KONTROL")
     uploaded_file = st.file_uploader("Upload Gambar Anda di Sini", type=["jpg", "png", "jpeg"], key="uploader")
@@ -203,28 +236,38 @@ with st.sidebar:
             filename_for_download = uploaded_file.name
             image_pil_orig = Image.open(uploaded_file)
             image_cv_bgr = pil_to_cv2(image_pil_orig)
-            # st.image Menerima use_column_width di v1.17.0
             st.image(image_pil_orig, caption="Gambar Asli (Preview)", use_column_width=True)
         except Exception as e:
             st.error(f"Gagal memuat gambar: {e}")
             uploaded_file = None
             
-    # PERBAIKAN: Hapus use_container_width dari st.button
     if st.button("Reset Gambar Asli", key="reset_button", disabled=(uploaded_file is None)):
         st.info("Fitur reset masih dalam pengembangan. Silakan upload ulang gambar.")
 
 # --- Area Konten Utama ---
+
+# --- PERBAIKAN: Pindahkan navigasi ke HALAMAN UTAMA ---
+# Ini tidak akan tersembunyi di mobile
+feature_tab = st.radio(
+    "Pilih Kategori Fitur:",
+    ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
+    key="feature_tab_selector",
+    horizontal=True # Membuatnya jadi tombol horizontal
+)
+st.markdown("---") # Pemisah visual
+
 if uploaded_file is None or image_cv_bgr is None:
     st.info("Silakan upload gambar di sidebar untuk memulai.")
 else:
-    # --- PERBAIKAN: Gunakan if/elif berdasarkan st.sidebar.radio ---
+    # --- Gunakan if/elif berdasarkan st.radio ---
 
     # --- Tampilan 1: Filtering ---
     if feature_tab == "🎞️ Filtering":
         st.header("🎞️ Filtering Gambar")
         st.subheader("Pengaturan Filter")
-        # PERBAIKAN: Hapus horizontal=True
-        filter_type = st.radio("Pilih Filter:", ("Tidak ada", "Gaussian Blur", "Sharpen"), key="filter_radio")
+        filter_type = st.radio("Pilih Filter:", 
+                               ("Tidak ada", "Gaussian Blur", "Sharpen", "Sepia", "Koreksi Warna (Cold/Warm)"), 
+                               key="filter_radio")
         
         img_filtered = image_cv_bgr.copy()
         
@@ -233,6 +276,11 @@ else:
             img_filtered = apply_gaussian_blur(image_cv_bgr, ksize_blur)
         elif filter_type == "Sharpen":
             img_filtered = apply_sharpen(image_cv_bgr)
+        elif filter_type == "Sepia":
+            img_filtered = apply_sepia(image_cv_bgr)
+        elif filter_type == "Koreksi Warna (Cold/Warm)":
+            temp_val = st.slider("Suhu Warna (-100 = Dingin, 100 = Hangat)", -100, 100, 0, 5, key="temp_slider")
+            img_filtered = apply_cold_warm(image_cv_bgr, temp_val)
             
         col1_f, col2_f = st.columns(2)
         with col1_f:
@@ -240,7 +288,6 @@ else:
             ax_orig.imshow(image_pil_orig) 
             ax_orig.set_title("Original")
             ax_orig.axis('off')
-            # PERBAIKAN: Hapus use_column_width dari st.pyplot
             st.pyplot(fig_orig)
             
         with col2_f:
@@ -253,7 +300,6 @@ else:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
-                # PERBAIKAN: Hapus use_column_width dari st.pyplot
                 st.pyplot(fig_res)
                 get_image_download_button(img_filtered, filename_for_download, filter_type)
             else:
@@ -263,12 +309,10 @@ else:
     elif feature_tab == "🛠️ Restorasi":
         st.header("🛠️ Restorasi Citra")
         
-        # PERBAIKAN: Ganti sub-tabs dengan radio
         restore_mode = st.radio("Pilih Mode Restorasi:", ["Reduksi Noise", "(Unik) Inpainting Interaktif"], key="restore_mode_radio")
         
         if restore_mode == "Reduksi Noise":
             st.subheader("Reduksi Noise")
-            # PERBAIKAN: Hapus horizontal=True
             restore_type = st.radio("Pilih Metode:", ("Tidak ada", "Median Blur", "Bilateral Filter"), key="restore_radio")
             
             img_restored = image_cv_bgr.copy()
@@ -289,7 +333,6 @@ else:
                 ax_orig.imshow(image_pil_orig) 
                 ax_orig.set_title("Original")
                 ax_orig.axis('off')
-                # PERBAIKAN: Hapus use_column_width dari st.pyplot
                 st.pyplot(fig_orig)
                 
             with col2_r:
@@ -302,7 +345,6 @@ else:
                         ax_res.imshow(np.array(img_display_result), cmap='gray')
                     else:
                         ax_res.imshow(np.array(img_display_result))
-                    # PERBAIKAN: Hapus use_column_width dari st.pyplot
                     st.pyplot(fig_res)
                     get_image_download_button(img_restored, filename_for_download, restore_type)
                 else:
@@ -343,7 +385,6 @@ else:
             with col2_i:
                 st.markdown("**Hasil Inpainting**")
                 radius_inp = st.slider("Radius Inpainting", 1, 15, 3, key="inp_radius")
-                # PERBAIKAN: Hapus horizontal=True
                 method_str_inp = st.radio("Metode:", ("TELEA", "NS"), key="inp_method")
                 method_flag_inp = cv2.INPAINT_TELEA if method_str_inp == "TELEA" else cv2.INPAINT_NS
                 
@@ -358,18 +399,15 @@ else:
                          mask_resized_to_orig = cv2.resize(mask_data_canvas, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                     
-                    # st.image Menerima use_column_width di v1.17.0
                     st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_column_width=True)
                     get_image_download_button(img_inpainted, filename_for_download, "Inpainting")
                 else:
-                    # st.image Menerima use_column_width di v1.17.0
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
     # --- Tampilan 3: Enhancement ---
     elif feature_tab == "✨ Enhancement":
         st.header("✨ Enhancement Citra")
         st.subheader("Pengaturan Enhancement")
-        # PERBAIKAN: Hapus horizontal=True
         enhance_type = st.radio("Pilih Metode:", ("Tidak ada", "Brightness / Contrast", "CLAHE", "Unsharp Masking"), key="enhance_radio")
 
         img_enhanced = image_cv_bgr.copy()
@@ -395,7 +433,6 @@ else:
             ax_orig.imshow(image_pil_orig) 
             ax_orig.set_title("Original")
             ax_orig.axis('off')
-            # PERBAIKAN: Hapus use_column_width dari st.pyplot
             st.pyplot(fig_orig)
             
         with col2_e:
@@ -408,19 +445,44 @@ else:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
-                # PERBAIKAN: Hapus use_column_width dari st.pyplot
                 st.pyplot(fig_res)
                 get_image_download_button(img_enhanced, filename_for_download, enhance_type)
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
+    # --- Tampilan 4: Transformasi ---
+    elif feature_tab == "🔄 Transformasi":
+        st.header("🔄 Transformasi Gambar")
+        st.subheader("Rotasi (Putar Gambar)")
+        
+        angle = st.slider("Sudut Rotasi (Searah Jarum Jam)", -180, 180, 0, 1, key="rotation_angle")
+        
+        img_rotated = apply_rotation(image_cv_bgr, angle)
+        
+        col1_t, col2_t = st.columns(2)
+        with col1_t:
+            fig_orig, ax_orig = plt.subplots()
+            ax_orig.imshow(image_pil_orig) 
+            ax_orig.set_title("Original")
+            ax_orig.axis('off')
+            st.pyplot(fig_orig)
+        
+        with col2_t:
+            fig_res, ax_res = plt.subplots()
+            ax_res.set_title(f"Hasil Rotasi: {angle}°")
+            ax_res.axis('off')
+            img_display_result = cv2_to_pil(img_rotated)
+            if img_display_result:
+                ax_res.imshow(np.array(img_display_result))
+                st.pyplot(fig_res)
+                get_image_download_button(img_rotated, filename_for_download, f"Rotasi_{angle}deg")
+            else:
+                st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-    # --- Tampilan 4: Analisis (Fitur Unik) ---
+    # --- Tampilan 5: Analisis (Fitur Unik) ---
     elif feature_tab == "🎨 Analisis":
         st.header("🎨 Analisis Citra")
         st.info("Fitur ini menganalisis gambar asli Anda tanpa mengubahnya.")
-        
-        # --- PERBAIKAN: Hapus kolom luar (col1_a, col2_a) ---
         
         st.subheader("Analisis Palet Warna")
         k_colors_analyze = st.slider("Jumlah Warna (K)", 2, 10, 5, key="k_colors_analyze")
@@ -429,7 +491,6 @@ else:
             dom_colors_res, counts_res = analyze_color_palette(image_cv_bgr, k_colors_analyze)
         
         if dom_colors_res:
-            # Ini sekarang adalah satu-satunya 'st.columns' dan tidak nested
             cols_color_res = st.columns(len(dom_colors_res)) 
             total_pixels_res = sum(counts_res) if counts_res is not None else 1
             for i, color_hex_res in enumerate(dom_colors_res):
@@ -474,7 +535,6 @@ else:
                 ax_hist.plot(hist_data_res['HSV']['H'], color='r')
                 ax_hist.set_xlim([0, 180])
             
-            # PERBAIKAN: Hapus use_column_width dari st.pyplot
             st.pyplot(fig_hist)
         else:
             st.warning("Gagal menghitung histogram.")

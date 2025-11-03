@@ -25,8 +25,9 @@ st.markdown("<h1 style='text-align: center;'>Studio PCD Interaktif</h1>", unsafe
 st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Filter, Restorasi, dan Analisis Citra dalam Satu Aplikasi.</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- PERBAIKAN: Mengganti st.link_button dengan HTML manual ---
-col1, col2, col3 = st.columns([1.5, 2, 1.5])
+# --- Tombol di Tengah ---
+# Kita gunakan 3 kolom, dan letakkan tombol di kolom tengah (col2)
+col1, col2, col3 = st.columns([1.5, 2, 1.5]) 
 with col2:
     st.markdown(
         """
