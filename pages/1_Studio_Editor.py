@@ -90,7 +90,6 @@ def apply_sepia(img):
     except Exception as e: 
         st.error(f"Error Sepia: {e}"); return img
 
-# --- PERBAIKAN: Logika Cold/Warm ---
 def apply_cold_warm(img, slider_val):
     # slider_val: -100 (cold/biru) to 100 (warm/kuning)
     if slider_val == 0:
@@ -99,13 +98,9 @@ def apply_cold_warm(img, slider_val):
         val = int(slider_val) # Gunakan nilai penuh
         
         # LUT untuk menambah
-        # val=50 -> clip(arange + 50) -> [50..255]
-        # val=-50 -> clip(arange - 50) -> [0..205]
         increase_lut = np.clip(np.arange(256) + val, 0, 255).astype(np.uint8)
         
         # LUT untuk mengurangi
-        # val=50 -> clip(arange - 50) -> [0..205]
-        # val=-50 -> clip(arange - (-50)) -> [50..255]
         decrease_lut = np.clip(np.arange(256) - val, 0, 255).astype(np.uint8)
 
         b, g, r = cv2.split(img)
@@ -114,11 +109,8 @@ def apply_cold_warm(img, slider_val):
             r = cv2.LUT(r, increase_lut) # Tingkatkan Merah
             b = cv2.LUT(b, decrease_lut) # Kurangi Biru
         else: # Kiri -> Dingin (Biru)
-            # val negatif, misal -50.
-            # increase_lut -> [0..205] (Mengurangi)
-            # decrease_lut -> [50..255] (Menambah)
-            r = cv2.LUT(r, increase_lut) # Kurangi Merah
-            b = cv2.LUT(b, decrease_lut) # Tambah Biru
+            r = cv2.LUT(r, increase_lut) # Kurangi Merah (karena val negatif)
+            b = cv2.LUT(b, decrease_lut) # Tambah Biru (karena val negatif)
             
         return cv2.merge((b, g, r))
     except Exception as e: 
@@ -196,7 +188,6 @@ def apply_rotation(img, angle):
     except Exception as e: 
         st.error(f"Error Rotasi: {e}"); return img
 
-# --- FUNGSI BARU: Flip ---
 def apply_flip(img, flip_code):
     # flip_code: 0 = Vertikal (X-axis), 1 = Horizontal (Y-axis)
     try:
@@ -280,9 +271,9 @@ feature_tab = st.radio(
     "Pilih Kategori Fitur:",
     ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
     key="feature_tab_selector",
-    horizontal=True # Biarkan horizontal=True, karena ini ada di v1.17.0
+    horizontal=True 
 )
-st.markdown("---") # Pemisah visual
+st.markdown("---") 
 
 if uploaded_file is None or image_cv_bgr is None:
     st.info("Silakan upload gambar di sidebar untuk memulai.")
@@ -420,7 +411,9 @@ else:
                 mask_data_canvas = None
                 
                 if canvas_result_inpainting.image_data is not None:
-                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 0] 
+                    # --- PERBAIKAN KUNCI DI SINI ---
+                    # Coretan ada di channel Alpha (indeks 3), bukan Merah (indeks 0)
+                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
@@ -601,4 +594,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal memproses gambar untuk ditampilkan.")
+            st.warning("Gagal menghitung histogram.")
