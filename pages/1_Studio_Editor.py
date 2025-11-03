@@ -91,19 +91,27 @@ def apply_sepia(img):
         st.error(f"Error Sepia: {e}"); return img
 
 def apply_cold_warm(img, slider_val):
+    # slider_val: -100 (cold/biru) to 100 (warm/kuning)
     if slider_val == 0:
         return img
     try:
-        val = int(slider_val)
+        val = int(slider_val) # Gunakan nilai penuh
+        
+        # LUT untuk menambah
         increase_lut = np.clip(np.arange(256) + val, 0, 255).astype(np.uint8)
+        
+        # LUT untuk mengurangi
         decrease_lut = np.clip(np.arange(256) - val, 0, 255).astype(np.uint8)
+
         b, g, r = cv2.split(img)
-        if slider_val > 0: 
-            r = cv2.LUT(r, increase_lut) 
-            b = cv2.LUT(b, decrease_lut) 
-        else: 
-            r = cv2.LUT(r, increase_lut) 
-            b = cv2.LUT(b, decrease_lut) 
+        
+        if slider_val > 0: # Kanan -> Hangat (Kuning/Oranye)
+            r = cv2.LUT(r, increase_lut) # Tingkatkan Merah
+            b = cv2.LUT(b, decrease_lut) # Kurangi Biru
+        else: # Kiri -> Dingin (Biru)
+            r = cv2.LUT(r, increase_lut) # Kurangi Merah (karena val negatif)
+            b = cv2.LUT(b, decrease_lut) # Tambah Biru (karena val negatif)
+            
         return cv2.merge((b, g, r))
     except Exception as e: 
         st.error(f"Error Koreksi Warna: {e}"); return img
@@ -125,8 +133,7 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
     try:
         mask = mask_gray.astype(np.uint8)
         if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-        # Threshold: ambil semua piksel yang tidak hitam pekat ( > 1)
-        _, mask_binary = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
+        _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
         if img.shape[:2] != mask_binary.shape[:2]:
              mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
         if len(img.shape) == 3 and img.shape[2] == 3:
@@ -182,6 +189,7 @@ def apply_rotation(img, angle):
         st.error(f"Error Rotasi: {e}"); return img
 
 def apply_flip(img, flip_code):
+    # flip_code: 0 = Vertikal (X-axis), 1 = Horizontal (Y-axis)
     try:
         return cv2.flip(img, flip_code)
     except Exception as e:
@@ -259,7 +267,6 @@ with st.sidebar:
 # --- Area Konten Utama ---
 
 # --- Navigasi di HALAMAN UTAMA ---
-# (Kita pakai st.radio(horizontal=True) karena st.tabs tidak ada di v1.17.0)
 feature_tab = st.radio(
     "Pilih Kategori Fitur:",
     ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
@@ -371,28 +378,22 @@ else:
             with col1_i:
                 st.markdown("**Kanvas Masking** (Gambar di sini)")
                 stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
-                
-                # --- PERBAIKAN 1: BACKGROUND KANVAS ---
-                # Gunakan 'image_pil_orig' (PIL Asli) BUKAN 'cv2_to_pil(image_cv_bgr)'
-                bg_pil = image_pil_orig.copy()
+                bg_pil = cv2_to_pil(image_cv_bgr) 
                 
                 aspect_ratio = bg_pil.height / bg_pil.width
                 CANVAS_WIDTH = 600
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
                 
-                # Resize PIL image
-                bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
-                
-                # Pastikan formatnya RGBA untuk st_canvas v0.9.3
-                if bg_pil_resized.mode != 'RGBA':
-                    bg_pil_resized = bg_pil_resized.convert('RGBA')
-                
-                # `fill_color` mengontrol warna coretan saat `drawing_mode="freedraw"`
+                if bg_pil:
+                    bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
+                else:
+                    bg_pil_resized = None
+
                 canvas_result_inpainting = st_canvas(
-                    fill_color="rgba(255, 0, 0, 1.0)", # Coretan MERAH SOLID (Alpha = 1.0)
+                    fill_color="rgba(255, 0, 0, 0.3)",
                     stroke_width=stroke_width_inp,
-                    stroke_color="rgba(0, 0, 0, 0)", # Tidak terpakai di freedraw
-                    background_image=bg_pil_resized, # SEKARANG HARUSNYA MUNCUL
+                    stroke_color="#FF0000", 
+                    background_image=bg_pil_resized, 
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
                     width=CANVAS_WIDTH,
@@ -410,28 +411,19 @@ else:
                 mask_data_canvas = None
                 
                 if canvas_result_inpainting.image_data is not None:
-                    # --- PERBAIKAN 2: LOGIKA MASKER ---
-                    # Coretan kita MERAH SOLID (R=255, G=0, B=0, A=255)
-                    # Latar belakang adalah gambar (TIDAK murni merah)
-                    # Kita bisa asumsikan coretan adalah satu-satunya piksel MERAH MURNI.
-                    
-                    # Ambil channel Merah (indeks 0)
-                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 0]
+                    # --- PERBAIKAN KUNCI DI SINI ---
+                    # Coretan ada di channel Alpha (indeks 3), bukan Merah (indeks 0)
+                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
-                # Cek apakah ada piksel yang di-masker (apakah ada coretan merah)
-                # Kita cari yang nilainya > 250 (untuk toleransi sedikit)
-                if mask_data_canvas is not None and np.sum(mask_data_canvas > 250) > 0:
+                if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
-                         # Buat masker biner (0 atau 255) dari channel Merah
-                         mask_for_cv2 = ((mask_data_canvas > 250).astype(np.uint8) * 255)
-                         mask_resized_to_orig = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
+                         mask_resized_to_orig = cv2.resize(mask_data_canvas, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                     
                     st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_column_width=True)
                     get_image_download_button(img_inpainted, filename_for_download, "Inpainting")
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
-
 
     # --- Tampilan 3: Enhancement ---
     elif feature_tab == "✨ Enhancement":
@@ -602,4 +594,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal memproses gambar untuk ditampilkan.")
+            st.warning("Gagal menghitung histogram.")
