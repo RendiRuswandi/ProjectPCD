@@ -369,7 +369,7 @@ else:
                 ax_res.axis('off')
                 img_display_result = cv2_to_pil(img_restored)
                 if img_display_result:
-                    if len(img_restored.shape) == 2:
+                    if len(img_display_result.shape) == 2:
                         ax_res.imshow(np.array(img_display_result), cmap='gray')
                     else:
                         ax_res.imshow(np.array(img_display_result))
@@ -668,4 +668,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal menghitung histogram.")
+            st.warning("Gagal memproses gambar untuk ditampilkan.")
