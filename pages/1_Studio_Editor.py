@@ -78,39 +78,43 @@ def apply_sharpen(img):
 def apply_sepia(img):
     try:
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # Matriks transformasi Sepia
         kernel = np.array([
             [0.393, 0.769, 0.189],
             [0.349, 0.686, 0.168],
             [0.272, 0.534, 0.131]
         ])
         sepia_img_rgb = cv2.transform(img_rgb, kernel)
+        # Klip nilai agar tetap dalam rentang 0-255
         sepia_img_rgb = np.clip(sepia_img_rgb, 0, 255)
+        # Konversi kembali ke BGR
         sepia_img_bgr = cv2.cvtColor(sepia_img_rgb.astype(np.uint8), cv2.COLOR_RGB2BGR)
         return sepia_img_bgr
     except Exception as e: 
         st.error(f"Error Sepia: {e}"); return img
 
 def apply_cold_warm(img, slider_val):
-    # slider_val: -100 (cold/biru) to 100 (warm/kuning)
+    # slider_val: -100 (cold) to 100 (warm)
     if slider_val == 0:
         return img
     try:
-        val = int(slider_val) # Gunakan nilai penuh
+        # Buat Lookup Table (LUT) identitas
+        identity_lut = np.arange(256, dtype=np.uint8)
         
-        # LUT untuk menambah
-        increase_lut = np.clip(np.arange(256) + val, 0, 255).astype(np.uint8)
+        # Buat LUT hangat dan dingin
+        # Kita sesuaikan intensitas efeknya (misal * 0.5)
+        val = slider_val * 0.5
+        warm_lut = np.clip(identity_lut + val, 0, 255).astype(np.uint8)
+        cold_lut = np.clip(identity_lut - val, 0, 255).astype(np.uint8)
         
-        # LUT untuk mengurangi
-        decrease_lut = np.clip(np.arange(256) - val, 0, 255).astype(np.uint8)
-
         b, g, r = cv2.split(img)
         
-        if slider_val > 0: # Kanan -> Hangat (Kuning/Oranye)
-            r = cv2.LUT(r, increase_lut) # Tingkatkan Merah
-            b = cv2.LUT(b, decrease_lut) # Kurangi Biru
-        else: # Kiri -> Dingin (Biru)
-            r = cv2.LUT(r, increase_lut) # Kurangi Merah (karena val negatif)
-            b = cv2.LUT(b, decrease_lut) # Tambah Biru (karena val negatif)
+        if slider_val > 0: # Hangat (lebih Merah, kurang Biru)
+            r = cv2.LUT(r, warm_lut)
+            b = cv2.LUT(b, cold_lut)
+        else: # Dingin (lebih Biru, kurang Merah)
+            r = cv2.LUT(r, cold_lut)
+            b = cv2.LUT(b, warm_lut)
             
         return cv2.merge((b, g, r))
     except Exception as e: 
@@ -134,9 +138,12 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
         mask = mask_gray.astype(np.uint8)
         if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
         _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+        
         if img.shape[:2] != mask_binary.shape[:2]:
+             st.warning(f"Menyesuaikan ukuran masker dari {mask_binary.shape} ke {img.shape[:2]}...")
              mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
-        if len(img.shape) == 3 and img.shape[2] == 3:
+        
+        if len(img.shape) == 3 and img.shape[2] == 3: # BGR
             return cv2.inpaint(img, mask_binary, radius, flags=method_flag)
         else:
              st.warning("Inpainting hanya support gambar BGR 3-channel.")
@@ -177,23 +184,25 @@ def apply_rotation(img, angle):
     try:
         (h, w) = img.shape[:2]
         (cX, cY) = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+        
+        # Dapatkan matriks rotasi
+        M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0) # -angle untuk searah jarum jam
+        
+        # Hitung bounding box baru
         cos = np.abs(M[0, 0])
         sin = np.abs(M[0, 1])
+        
         nW = int((h * sin) + (w * cos))
         nH = int((h * cos) + (w * sin))
+        
+        # Sesuaikan matriks untuk translasi
         M[0, 2] += (nW / 2) - cX
         M[1, 2] += (nH / 2) - cY
+        
+        # Lakukan rotasi
         return cv2.warpAffine(img, M, (nW, nH))
     except Exception as e: 
         st.error(f"Error Rotasi: {e}"); return img
-
-def apply_flip(img, flip_code):
-    # flip_code: 0 = Vertikal (X-axis), 1 = Horizontal (Y-axis)
-    try:
-        return cv2.flip(img, flip_code)
-    except Exception as e:
-        st.error(f"Error Flip: {e}"); return img
 
 # Analisis
 def analyze_color_palette(img, num_colors):
@@ -207,9 +216,12 @@ def analyze_color_palette(img, num_colors):
              image_rgb_small = cv2.resize(image_rgb, dim, interpolation = cv2.INTER_AREA)
         else:
              image_rgb_small = image_rgb
+
         pixels = image_rgb_small.reshape(-1, 3)
-        kmeans = KMeans(n_clusters=num_colors, n_init=10, random_state=42)
+        
+        kmeans = KMeans(n_clusters=num_colors, n_init=10, random_state=42) # n_init=10
         kmeans.fit(pixels)
+        
         dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
         unique, counts = np.unique(kmeans.labels_, return_counts=True)
         sorted_indices = np.argsort(counts)[::-1]
@@ -237,6 +249,7 @@ def get_histogram(img):
         return hist_data
     except Exception as e: st.error(f"Error Histogram: {e}"); return {}
 
+
 # --- UI STREAMLIT ---
 st.title("🔬 Studio Editor PCD")
 st.caption("Gunakan Panel Kontrol di sidebar untuk mengunggah gambar dan mulai mengedit.")
@@ -246,7 +259,13 @@ image_pil_orig = None
 image_cv_bgr = None
 filename_for_download = "untitled.png" 
 
-# --- Sidebar (Hanya untuk upload) ---
+# --- Navigasi dipindahkan ke Sidebar (menggantikan st.tabs) ---
+feature_tab = st.sidebar.radio(
+    "Pilih Kategori Fitur:",
+    ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
+    key="feature_tab_selector"
+)
+
 with st.sidebar:
     st.title("PANEL KONTROL")
     uploaded_file = st.file_uploader("Upload Gambar Anda di Sini", type=["jpg", "png", "jpeg"], key="uploader")
@@ -265,25 +284,16 @@ with st.sidebar:
         st.info("Fitur reset masih dalam pengembangan. Silakan upload ulang gambar.")
 
 # --- Area Konten Utama ---
-
-# --- Navigasi di HALAMAN UTAMA ---
-feature_tab = st.radio(
-    "Pilih Kategori Fitur:",
-    ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
-    key="feature_tab_selector",
-    horizontal=True 
-)
-st.markdown("---") 
-
 if uploaded_file is None or image_cv_bgr is None:
     st.info("Silakan upload gambar di sidebar untuk memulai.")
 else:
-    # --- Gunakan if/elif berdasarkan st.radio ---
+    # --- Gunakan if/elif berdasarkan st.sidebar.radio ---
 
     # --- Tampilan 1: Filtering ---
     if feature_tab == "🎞️ Filtering":
         st.header("🎞️ Filtering Gambar")
         st.subheader("Pengaturan Filter")
+        # PERBAIKAN: Tambahkan Sepia dan Koreksi Warna
         filter_type = st.radio("Pilih Filter:", 
                                ("Tidak ada", "Gaussian Blur", "Sharpen", "Sepia", "Koreksi Warna (Cold/Warm)"), 
                                key="filter_radio")
@@ -411,9 +421,7 @@ else:
                 mask_data_canvas = None
                 
                 if canvas_result_inpainting.image_data is not None:
-                    # --- PERBAIKAN KUNCI DI SINI ---
-                    # Coretan ada di channel Alpha (indeks 3), bukan Merah (indeks 0)
-                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
+                    mask_data_canvas = canvas_result_inpainting.image_data[:, :, 0] 
                 
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
@@ -471,49 +479,17 @@ else:
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-    # --- Tampilan 4: Transformasi (DIPERBARUI) ---
+    # --- Tampilan 4: Transformasi ---
     elif feature_tab == "🔄 Transformasi":
         st.header("🔄 Transformasi Gambar")
-        
-        # --- Bagian Rotasi ---
         st.subheader("Rotasi (Putar Gambar)")
+        
         angle = st.slider("Sudut Rotasi (Searah Jarum Jam)", -180, 180, 0, 1, key="rotation_angle")
         
-        # --- Bagian Flip (BARU) ---
-        st.subheader("Flip (Cermin)")
-        flip_type = st.radio("Pilih Tipe Flip:", 
-                             ("Tidak ada", "Horizontal (Kiri/Kanan)", "Vertikal (Atas/Bawah)"), 
-                             key="flip_radio") 
+        img_rotated = apply_rotation(image_cv_bgr, angle)
         
-        # Terapkan transformasi secara berurutan
-        img_transformed = image_cv_bgr.copy()
-        operation_name = "Transformasi"
-        
-        # 1. Terapkan Rotasi (jika ada)
-        if angle != 0:
-            img_transformed = apply_rotation(img_transformed, angle)
-            operation_name = f"Rotasi {angle}°"
-        
-        # 2. Terapkan Flip (jika ada) ke gambar yang *sudah* dirotasi
-        final_img = img_transformed 
-        
-        if flip_type == "Horizontal (Kiri/Kanan)":
-            final_img = apply_flip(img_transformed, 1) # 1 untuk Y-axis (depan/belakang)
-            operation_name = "Flip Horizontal"
-        elif flip_type == "Vertikal (Atas/Bawah)":
-            final_img = apply_flip(img_transformed, 0) # 0 untuk X-axis
-            operation_name = "Flip Vertikal"
-        
-        # Buat nama yang dinamis
-        if angle != 0 and flip_type != "Tidak ada":
-             operation_name = f"Rotasi {angle}° & {flip_type.split(' ')[0]}"
-        elif angle != 0:
-             operation_name = f"Rotasi {angle}°"
-        
-        # Tampilkan hasil
         col1_t, col2_t = st.columns(2)
         with col1_t:
-            st.markdown("**Original**")
             fig_orig, ax_orig = plt.subplots()
             ax_orig.imshow(image_pil_orig) 
             ax_orig.set_title("Original")
@@ -521,20 +497,16 @@ else:
             st.pyplot(fig_orig)
         
         with col2_t:
-            st.markdown("**Hasil Transformasi**")
             fig_res, ax_res = plt.subplots()
-            ax_res.set_title(f"Hasil: {operation_name}")
+            ax_res.set_title(f"Hasil Rotasi: {angle}°")
             ax_res.axis('off')
-            
-            img_display_result = cv2_to_pil(final_img) 
-            
+            img_display_result = cv2_to_pil(img_rotated)
             if img_display_result:
                 ax_res.imshow(np.array(img_display_result))
                 st.pyplot(fig_res)
-                get_image_download_button(final_img, filename_for_download, operation_name)
+                get_image_download_button(img_rotated, filename_for_download, f"Rotasi_{angle}deg")
             else:
                 st.warning("Gagal memproses gambar untuk ditampilkan.")
-
 
     # --- Tampilan 5: Analisis (Fitur Unik) ---
     elif feature_tab == "🎨 Analisis":
