@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
-import base64 # <-- IMPORT BARU
+# HAPUS 'import base64'
 
 # --- Konfigurasi Halaman ---
 st.set_page_config(
@@ -37,17 +37,7 @@ def cv2_to_pil(cv2_image):
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
 
-# --- FUNGSI HELPER BARU UNTUK MEMPERBAIKI KANVAS ---
-def pil_to_base64(pil_image):
-    """Konversi PIL Image ke base64 data URL."""
-    # Pastikan RGBA untuk format PNG
-    if pil_image.mode != 'RGBA':
-        pil_image = pil_image.convert('RGBA')
-    
-    buffered = io.BytesIO()
-    pil_image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{img_str}"
+# HAPUS FUNGSI 'pil_to_base64'
 
 def get_image_download_button(img_cv2, filename_base, operation_name):
     if img_cv2 is None: return
@@ -321,7 +311,7 @@ else:
             ax_res.axis('off')
             img_display_result = cv2_to_pil(img_filtered)
             if img_display_result:
-                if len(img_filtered.shape) == 2:
+                if len(img_display_result.shape) == 2:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
@@ -395,16 +385,15 @@ else:
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
                 bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
                 
-                # Ubah ke RGBA dan konversi ke base64
+                # Pastikan formatnya RGBA untuk st_canvas v0.9.3
                 if bg_pil_resized.mode != 'RGBA':
                     bg_pil_resized = bg_pil_resized.convert('RGBA')
-                bg_url = pil_to_base64(bg_pil_resized) # <-- PERBAIKAN
                 
                 canvas_result_inpainting = st_canvas(
                     fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
                     stroke_width=stroke_width_inp,
                     stroke_color="rgba(0, 0, 0, 0)", 
-                    background_image=bg_url, # <-- PERBAIKAN
+                    background_image=bg_pil_resized, # <-- PERBAIKAN (menggunakan obyek PIL)
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
                     width=CANVAS_WIDTH,
@@ -459,10 +448,9 @@ else:
                 CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
                 bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
                 
-                # Ubah ke RGBA dan konversi ke base64
+                # Pastikan formatnya RGBA untuk st_canvas v0.9.3
                 if bg_pil_resized_db.mode != 'RGBA':
                     bg_pil_resized_db = bg_pil_resized_db.convert('RGBA')
-                bg_url_db = pil_to_base64(bg_pil_resized_db) # <-- PERBAIKAN
                 
                 # Ubah warna coretan berdasarkan mode
                 stroke_color_db = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
@@ -471,7 +459,7 @@ else:
                     fill_color="rgba(0, 0, 0, 0)", # Jangan isi bentuk
                     stroke_width=stroke_width_db,
                     stroke_color=stroke_color_db, # WARNA CORETAN
-                    background_image=bg_url_db, # <-- PERBAIKAN
+                    background_image=bg_pil_resized_db, # <-- PERBAIKAN (menggunakan obyek PIL)
                     update_streamlit=True,
                     height=CANVAS_HEIGHT_DB,
                     width=CANVAS_WIDTH_DB,
@@ -544,7 +532,7 @@ else:
             ax_res.axis('off')
             img_display_result = cv2_to_pil(img_enhanced)
             if img_display_result:
-                if len(img_enhanced.shape) == 2:
+                if len(img_display_result.shape) == 2:
                     ax_res.imshow(np.array(img_display_result), cmap='gray')
                 else:
                     ax_res.imshow(np.array(img_display_result))
@@ -668,4 +656,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal memproses gambar untuk ditampilkan.")
+            st.warning("Gagal menghitung histogram.")
