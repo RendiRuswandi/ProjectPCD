@@ -1,5 +1,5 @@
 streamlit==1.17.0
-streamlit-drawable-canvas>=0.9.5
+streamlit-drawable-canvas==0.9.3
 altair==4.2.2
 opencv-python-headless
 scikit-learn
