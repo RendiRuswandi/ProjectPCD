@@ -390,11 +390,11 @@ else:
                 if bg_pil_resized.mode != 'RGBA':
                     bg_pil_resized = bg_pil_resized.convert('RGBA')
                 
-                # `fill_color` mengontrol warna coretan saat `drawing_mode="freedraw"`
+                # `stroke_color` mengontrol warna coretan saat `drawing_mode="freedraw"`
                 canvas_result_inpainting = st_canvas(
-                    fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
+                    fill_color="rgba(0, 0, 0, 0)", # Jangan isi bentuk
                     stroke_width=stroke_width_inp,
-                    stroke_color="rgba(0, 0, 0, 0)", # Tidak terpakai di freedraw
+                    stroke_color="rgba(255, 0, 0, 0.7)", # Coretan MERAH TRANSLUSEN
                     background_image=bg_pil_resized, # SEKARANG HARUSNYA MUNCUL
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
@@ -419,6 +419,7 @@ else:
                     mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
                 # Cek apakah ada piksel yang di-masker (apakah ada coretan)
+                # (Alpha > 0)
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
                          # Buat masker biner (0 atau 255) dari channel Alpha
@@ -446,7 +447,7 @@ else:
                 st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
                 stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
                 
-                # Logika Latar Belakang Kanvas (Sama seperti Inpainting)
+                # --- PERBAIKAN 3.1: BACKGROUND KANVAS D&B ---
                 bg_pil_db = image_pil_orig.copy()
                 aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
                 CANVAS_WIDTH_DB = 600
@@ -456,13 +457,13 @@ else:
                     bg_pil_resized_db = bg_pil_resized_db.convert('RGBA')
                 
                 # Ubah warna coretan berdasarkan mode
-                fill_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
+                stroke_color_db = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
                 
                 canvas_result_db = st_canvas(
-                    fill_color=fill_color_db,
+                    fill_color="rgba(0, 0, 0, 0)", # Jangan isi bentuk
                     stroke_width=stroke_width_db,
-                    stroke_color="rgba(0, 0, 0, 0)",
-                    background_image=bg_pil_resized_db, 
+                    stroke_color=stroke_color_db, # WARNA CORETAN
+                    background_image=bg_pil_resized_db, # SEKARANG HARUSNYA MUNCUL
                     update_streamlit=True,
                     height=CANVAS_HEIGHT_DB,
                     width=CANVAS_WIDTH_DB,
@@ -477,6 +478,7 @@ else:
                 mask_data_db = None
 
                 if canvas_result_db.image_data is not None:
+                    # --- PERBAIKAN 3.2: LOGIKA MASKER D&B ---
                     # Ambil masker dari channel Alpha
                     mask_data_db = canvas_result_db.image_data[:, :, 3] 
 
@@ -489,7 +491,10 @@ else:
                         image_filtered = apply_brightness_contrast(image_cv_bgr, strength, 0)
                         
                         # Siapkan masker
-                        mask_resized = cv2.resize(mask_data_db, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]))
+                        # Ambil masker dari alpha channel dan resize
+                        mask_for_cv2 = ((mask_data_db > 0).astype(np.uint8) * 255)
+                        mask_resized = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]))
+                        
                         # Ubah masker ke 3 channel (agar bisa menggabung gambar warna)
                         mask_3channel = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR) > 0
                         
@@ -672,4 +677,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal memproses gambar untuk ditampilkan.")
+            st.warning("Gagal menghitung histogram.")
