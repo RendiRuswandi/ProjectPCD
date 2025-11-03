@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
-import base64 # <-- DITAMBAHKAN KEMBALI
+import base64 
 
 # --- Konfigurasi Halaman ---
 st.set_page_config(
@@ -40,7 +40,6 @@ def cv2_to_pil(cv2_image):
 def pil_to_base64(img_pil):
     """Konversi objek PIL Image ke Base64 String (Data URL)."""
     try:
-        # Jika RGBA, konversi ke RGB untuk encoding yang lebih stabil
         if img_pil.mode == 'RGBA':
             img_pil = img_pil.convert('RGB') 
             
@@ -80,10 +79,7 @@ def get_image_download_button(img_cv2, filename_base, operation_name):
     except Exception as e:
         st.error(f"Error download link: {e}")
 
-# --- Fungsi PCD (Filtering, Restorasi, Enhancement, Transformasi, Analisis) ---
-# --- (Anda harus memastikan semua fungsi ini ada dan benar) ---
-
-# Fungsi Inpainting
+# --- Fungsi PCD ---
 def apply_inpainting(img, mask_gray, radius, method_flag):
     if mask_gray is None or np.sum(mask_gray) == 0:
         st.info("Masker inpainting kosong. Gambar area pada kanvas untuk memulai.")
@@ -101,14 +97,12 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
             return img
     except Exception as e: st.error(f"Error Inpainting: {e}"); return img
 
-# Fungsi Brightness/Contrast (Digunakan untuk Dodge/Burn)
 def apply_brightness_contrast(img, brightness, contrast):
     alpha = 1.0 + (contrast / 100.0); alpha = max(0.1, alpha)
     beta = brightness
     try: return cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
     except Exception as e: st.error(f"Error Brightness/Contrast: {e}"); return img
-
-# Fungsi Placeholder (Harap Anda ganti dengan fungsi sebenarnya)
+# (Fungsi-fungsi PCD lainnya: blur, sharpen, sepia, cold_warm, median, bilateral, clahe, unsharp, rotate, flip, color_palette, histogram)
 def apply_gaussian_blur(img, ksize):
     if ksize % 2 == 0: ksize += 1
     return cv2.GaussianBlur(img, (ksize, ksize), 0)
@@ -117,7 +111,7 @@ def apply_sharpen(img):
     return cv2.filter2D(img, -1, kernel)
 def apply_sepia(img):
     img_sepia = img.copy()
-    img_sepia = cv2.cvtColor(img_sepia, cv2.COLOR_BGR2RGB) # Konversi BGR ke RGB untuk operasi matriks
+    img_sepia = cv2.cvtColor(img_sepia, cv2.COLOR_BGR2RGB)
     img_sepia = np.array(img_sepia, dtype=np.float64)
     kernel = np.array([[0.272, 0.534, 0.131],
                        [0.349, 0.686, 0.168],
@@ -125,16 +119,15 @@ def apply_sepia(img):
     img_sepia = cv2.transform(img_sepia, kernel)
     img_sepia[np.where(img_sepia > 255)] = 255
     img_sepia = np.array(img_sepia, dtype=np.uint8)
-    return cv2.cvtColor(img_sepia, cv2.COLOR_RGB2BGR) # Konversi kembali ke BGR
+    return cv2.cvtColor(img_sepia, cv2.COLOR_RGB2BGR)
 def apply_cold_warm(img, temp_val):
     temp_val = np.clip(temp_val, -100, 100)
     img_out = img.copy().astype(np.float32) / 255.0
     
-    # Red & Blue channel manipulation
-    if temp_val > 0: # Warm (Increase Red, Decrease Blue)
+    if temp_val > 0:
         img_out[:, :, 2] = np.clip(img_out[:, :, 2] + temp_val / 300.0, 0, 1)
         img_out[:, :, 0] = np.clip(img_out[:, :, 0] - temp_val / 300.0, 0, 1)
-    elif temp_val < 0: # Cold (Increase Blue, Decrease Red)
+    elif temp_val < 0:
         img_out[:, :, 0] = np.clip(img_out[:, :, 0] + abs(temp_val) / 300.0, 0, 1)
         img_out[:, :, 2] = np.clip(img_out[:, :, 2] - abs(temp_val) / 300.0, 0, 1)
         
@@ -173,7 +166,6 @@ def analyze_color_palette(img, k):
     labels = kmeans.labels_
     counts = np.bincount(labels)
     
-    # Sort by frequency
     sorted_indices = np.argsort(counts)[::-1]
     sorted_colors = dominant_colors[sorted_indices]
     sorted_counts = counts[sorted_indices]
@@ -183,25 +175,21 @@ def analyze_color_palette(img, k):
 def get_histogram(img):
     hist_data = {}
     
-    # Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     hist_gray = cv2.calcHist([gray], [0], None, [256], [0, 256])
     hist_data['Grayscale'] = hist_gray
     
-    # RGB
     colors_rgb = ('b', 'g', 'r')
     hist_rgb = {}
     for i, col in enumerate(colors_rgb):
         hist_rgb[col] = cv2.calcHist([img], [i], None, [256], [0, 256])
     hist_data['RGB'] = hist_rgb
 
-    # HSV (HUE only)
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    hist_h = cv2.calcHist([hsv], [0], None, [180], [0, 180]) # Hue ranges from 0-179
+    hist_h = cv2.calcHist([hsv], [0], None, [180], [0, 180])
     hist_data['HSV'] = {'H': hist_h}
     
     return hist_data
-
 
 # --- UI STREAMLIT ---
 st.title("🔬 Studio Editor PCD")
@@ -337,7 +325,7 @@ else:
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        # --- Inpainting Interaktif (MENGGUNAKAN BASE64) ---
+        # --- Inpainting Interaktif (PERBAIKAN ERROR ATTRIBUTE) ---
         elif restore_mode == "(Unik) Inpainting Interaktif":
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
@@ -353,20 +341,20 @@ else:
                 aspect_ratio = bg_pil.height / bg_pil.width
                 CANVAS_WIDTH = 600
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
-                bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
                 
-                # *** PERBAIKAN PENTING: MENGGUNAKAN BASE64 STRING ***
-                background_b64_inp = pil_to_base64(bg_pil_resized)
+                # PIL Image diubah ukurannya lalu dikonversi ke Base64 (string)
+                bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT)) 
+                background_b64_inp = pil_to_base64(bg_pil_resized) # <-- Ini adalah String (str)
 
                 if background_b64_inp:
                     canvas_result_inpainting = st_canvas(
                         fill_color="rgba(255, 0, 0, 0.5)", 
                         stroke_width=stroke_width_inp,
                         stroke_color="rgba(0, 0, 0, 0)", 
-                        background_image=background_b64_inp, # <-- MENGGUNAKAN BASE64
+                        background_image=background_b64_inp, # <-- String (st_canvas tidak akan resize lagi)
                         update_streamlit=True,
-                        height=CANVAS_HEIGHT,
-                        width=CANVAS_WIDTH,
+                        height=CANVAS_HEIGHT, # <-- Tentukan ukuran secara eksplisit
+                        width=CANVAS_WIDTH,   # <-- Tentukan ukuran secara eksplisit
                         drawing_mode="freedraw",
                         key="canvas_inpainting",
                     )
@@ -385,14 +373,11 @@ else:
                 mask_data_canvas = None
                 
                 if canvas_result_inpainting and canvas_result_inpainting.image_data is not None:
-                    # Ambil channel Alpha (masker)
                     mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
-                        # Buat masker CV2 dari channel alpha
                         mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
-                        # Resize masker ke ukuran gambar asli
                         mask_resized_to_orig = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                         img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                         
@@ -401,7 +386,7 @@ else:
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
-        # --- Dodge & Burn Interaktif (MENGGUNAKAN BASE64) ---
+        # --- Dodge & Burn Interaktif (PERBAIKAN ERROR ATTRIBUTE) ---
         elif restore_mode == "🖌️ Dodge & Burn Interaktif":
             st.subheader("Dodge & Burn Interaktif")
             st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
@@ -423,10 +408,10 @@ else:
                 aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
                 CANVAS_WIDTH_DB = 600
                 CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
-                bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
                 
-                # *** PERBAIKAN PENTING: MENGGUNAKAN BASE64 STRING ***
-                background_b64_db = pil_to_base64(bg_pil_resized_db)
+                # PIL Image diubah ukurannya lalu dikonversi ke Base64 (string)
+                bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
+                background_b64_db = pil_to_base64(bg_pil_resized_db) # <-- Ini adalah String (str)
                 
                 stroke_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
                 
@@ -435,10 +420,10 @@ else:
                         fill_color="rgba(0, 0, 0, 0)", 
                         stroke_width=stroke_width_db,
                         stroke_color=stroke_color_db, 
-                        background_image=background_b64_db, # <-- MENGGUNAKAN BASE64
+                        background_image=background_b64_db, # <-- String (st_canvas tidak akan resize lagi)
                         update_streamlit=True,
-                        height=CANVAS_HEIGHT_DB,
-                        width=CANVAS_WIDTH_DB,
+                        height=CANVAS_HEIGHT_DB, # <-- Tentukan ukuran secara eksplisit
+                        width=CANVAS_WIDTH_DB,   # <-- Tentukan ukuran secara eksplisit
                         drawing_mode="freedraw",
                         key="canvas_db",
                     )
@@ -454,7 +439,6 @@ else:
                 mask_data_db = None
 
                 if canvas_result_db and canvas_result_db.image_data is not None:
-                    # Ambil channel Alpha (masker)
                     mask_data_db = canvas_result_db.image_data[:, :, 3] 
 
                 if mask_data_db is not None and np.sum(mask_data_db > 0) > 0:
@@ -467,14 +451,12 @@ else:
                         mask_for_cv2 = ((mask_data_db > 0).astype(np.uint8) * 255)
                         mask_resized = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_LINEAR)
                         
-                        # Soft Edge/Feathering
                         mask_resized_blurred = cv2.GaussianBlur(mask_resized, (0, 0), sigmaX=db_strength/5.0)
                         
                         mask_float = mask_resized_blurred.astype(np.float32) / 255.0
                         
                         mask_3channel = cv2.cvtColor(mask_float, cv2.COLOR_GRAY2BGR)
                         
-                        # Blending
                         img_db_result = (image_filtered * mask_3channel) + (image_cv_bgr * (1 - mask_3channel))
                         img_db_result = np.clip(img_db_result, 0, 255).astype(np.uint8)
 
