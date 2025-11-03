@@ -37,21 +37,10 @@ def cv2_to_pil(cv2_image):
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
 
-def pil_to_base64(img_pil):
-    """Konversi objek PIL Image ke Base64 String (Data URL)."""
-    try:
-        # PENTING: Konversi ke RGB/PNG Base64 yang paling stabil di web
-        if img_pil.mode == 'RGBA':
-            img_pil = img_pil.convert('RGB') 
-            
-        buffered = io.BytesIO()
-        img_pil.save(buffered, format="PNG") 
-        img_str = base64.b64encode(buffered.getvalue()).decode()
-        return f"data:image/png;base64,{img_str}"
-    except Exception as e:
-        st.error(f"Gagal mengkonversi gambar ke Base64: {e}")
-        return None
-
+# FUNGSI BASE64 INI DIHAPUS KARENA BUG DI V.0.9.3
+# def pil_to_base64(img_pil):
+#     ...
+#     return f"data:image/png;base64,{img_str}"
 
 def get_image_download_button(img_cv2, filename_base, operation_name):
     if img_cv2 is None: return
@@ -196,11 +185,9 @@ if 'image_cv_bgr' not in st.session_state:
     st.session_state['image_cv_bgr'] = None
 if 'filename_for_download' not in st.session_state:
     st.session_state['filename_for_download'] = "untitled.png" 
-# Tambahan: Inisialisasi state untuk Base64 agar tidak Null saat render awal
-if 'b64_inp' not in st.session_state:
-    st.session_state['b64_inp'] = None
-if 'b64_db' not in st.session_state:
-    st.session_state['b64_db'] = None
+# Tambahan: Hanya perlu menyimpan PIL yang sudah di-resize
+if 'canvas_image_resized' not in st.session_state:
+    st.session_state['canvas_image_resized'] = None
 if 'canvas_width' not in st.session_state:
     st.session_state['canvas_width'] = 600
 if 'canvas_height' not in st.session_state:
@@ -226,7 +213,7 @@ with st.sidebar:
             st.session_state['image_pil_orig'] = img_pil_loaded
             st.session_state['image_cv_bgr'] = pil_to_cv2(img_pil_loaded)
             
-            # Menghitung ukuran dan menyimpan Base64 untuk kanvas
+            # Menghitung ukuran dan menyimpan PIL yang sudah di-resize untuk kanvas
             bg_pil = st.session_state['image_pil_orig'].copy()
             aspect_ratio = bg_pil.height / bg_pil.width
             CANVAS_WIDTH = 600
@@ -236,8 +223,8 @@ with st.sidebar:
             st.session_state['canvas_height'] = CANVAS_HEIGHT
             
             bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
-            st.session_state['b64_inp'] = pil_to_base64(bg_pil_resized)
-            st.session_state['b64_db'] = st.session_state['b64_inp'] # Keduanya pakai Base64 yang sama
+            # SIMPAN PIL IMAGE, BUKAN BASE64
+            st.session_state['canvas_image_resized'] = bg_pil_resized
             
             st.image(st.session_state['image_pil_orig'], caption="Gambar Asli (Preview)", use_column_width=True)
             
@@ -253,8 +240,7 @@ with st.sidebar:
         st.session_state['image_pil_orig'] = None
         st.session_state['image_cv_bgr'] = None
         st.session_state['filename_for_download'] = "untitled.png"
-        st.session_state['b64_inp'] = None
-        st.session_state['b64_db'] = None
+        st.session_state['canvas_image_resized'] = None
         st.experimental_rerun()
 
 
@@ -346,7 +332,7 @@ else:
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        # --- Inpainting Interaktif (PERBAIKAN INDENTASI) ---
+        # --- Inpainting Interaktif (MENGGUNAKAN PIL OBJEK LANGSUNG) ---
         elif restore_mode == "(Unik) Inpainting Interaktif":
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
@@ -354,31 +340,31 @@ else:
             col1_i, col2_i = st.columns(2)
             canvas_result_inpainting = None 
 
-            if st.session_state['b64_inp']: # Pastikan Base64 sudah ada
+            if st.session_state['canvas_image_resized'] is not None: # Pastikan gambar PIL sudah ada
                 with col1_i:
                     st.markdown("**Kanvas Masking** (Gambar di sini)")
                     stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
                     
-                    # Ambil Base64 dan ukuran dari State
-                    background_b64_inp = st.session_state['b64_inp']
+                    # Ambil PIL Image dan ukuran dari State
+                    bg_image_pil = st.session_state['canvas_image_resized']
                     CANVAS_WIDTH = st.session_state['canvas_width']
                     CANVAS_HEIGHT = st.session_state['canvas_height']
                     
-                    # PENTING UNTUK 0.9.3: Kirim Base64 dan ukuran yang sudah dihitung
+                    # KIRIM OBJEK PIL YANG SUDAH DI-RESIZE.
+                    # Ini memaksa library lama untuk mengambil ukuran dari objek, bukan mencoba mengkonversi Base64 string.
                     canvas_result_inpainting = st_canvas(
                         fill_color="rgba(255, 0, 0, 0.5)", 
                         stroke_width=stroke_width_inp,
                         stroke_color="rgba(0, 0, 0, 0)", 
-                        background_image=background_b64_inp, 
+                        background_image=bg_image_pil, # Ganti Base64 dengan objek PIL
                         update_streamlit=True,
                         height=CANVAS_HEIGHT, 
                         width=CANVAS_WIDTH,   
                         drawing_mode="freedraw",
                         key="canvas_inpainting",
                     )
-            # Blok else ini sekarang memiliki indentasi yang benar
             else: 
-                st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
+                st.warning("Gagal memuat latar belakang kanvas. Coba unggah ulang gambar.")
 
 
             with col2_i:
@@ -404,7 +390,7 @@ else:
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
-        # --- Dodge & Burn Interaktif (PERBAIKAN INDENTASI) ---
+        # --- Dodge & Burn Interaktif (MENGGUNAKAN PIL OBJEK LANGSUNG) ---
         elif restore_mode == "🖌️ Dodge & Burn Interaktif":
             st.subheader("Dodge & Burn Interaktif")
             st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
@@ -418,33 +404,32 @@ else:
             col1_db, col2_db = st.columns(2)
             canvas_result_db = None 
 
-            if st.session_state['b64_db']: # Pastikan Base64 sudah ada
+            if st.session_state['canvas_image_resized'] is not None: # Pastikan gambar PIL sudah ada
                 with col1_db:
                     st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
                     stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
                     
-                    # Ambil Base64 dan ukuran dari State
-                    background_b64_db = st.session_state['b64_db']
+                    # Ambil PIL Image dan ukuran dari State
+                    background_image_db = st.session_state['canvas_image_resized']
                     CANVAS_WIDTH_DB = st.session_state['canvas_width']
                     CANVAS_HEIGHT_DB = st.session_state['canvas_height']
                     
                     stroke_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
                     
-                    # PENTING UNTUK 0.9.3: Kirim Base64 dan ukuran yang sudah dihitung
+                    # KIRIM OBJEK PIL YANG SUDAH DI-RESIZE
                     canvas_result_db = st_canvas(
                         fill_color="rgba(0, 0, 0, 0)", 
                         stroke_width=stroke_width_db,
                         stroke_color=stroke_color_db, 
-                        background_image=background_b64_db, 
+                        background_image=background_image_db, # Ganti Base64 dengan objek PIL
                         update_streamlit=True,
                         height=CANVAS_HEIGHT_DB, 
                         width=CANVAS_WIDTH_DB,   
                         drawing_mode="freedraw",
                         key="canvas_db",
                     )
-            # Blok else ini sekarang memiliki indentasi yang benar
             else:
-                st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
+                st.warning("Gagal memuat latar belakang kanvas. Coba unggah ulang gambar.")
 
 
             with col2_db:
