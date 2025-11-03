@@ -41,7 +41,7 @@ with st.expander("🎞️ Filtering (Gaussian Blur, Sharpen, Sepia, Cold/Warm)",
     """)
 
 # --- Restorasi ---
-with st.expander("🛠️ Restorasi (Median, Bilateral, Inpainting)", expanded=False):
+with st.expander("🛠️ Restorasi (Median, Bilateral, Inpainting, Dodge & Burn)", expanded=False):
     st.subheader("Median Blur")
     st.markdown("""
     **Apa itu?** Filter non-linear yang sangat efektif menghilangkan noise *salt-and-pepper* (bintik putih/hitam acak).
@@ -61,6 +61,13 @@ with st.expander("🛠️ Restorasi (Median, Bilateral, Inpainting)", expanded=F
     **Apa itu?** Teknik restorasi untuk mengisi area gambar yang rusak atau hilang (atau yang Anda tandai).
     **Bagaimana?** Algoritma menganalisis piksel di sekitar "lubang" (masker) dan menyebarkan informasi (warna, tekstur) tersebut ke dalam area yang kosong.
     **Manfaat:** Menghilangkan goresan, noda, atau objek kecil secara "ajaib".
+    """)
+
+    st.subheader("Dodge & Burn (Interaktif)")
+    st.markdown("""
+    **Apa itu?** Teknik fotografi klasik untuk mencerahkan (Dodge) atau menggelapkan (Burn) area tertentu secara manual.
+    **Bagaimana?** Anda "menggosok" kanvas. Aplikasi membuat versi gambar yang lebih terang/gelap dan menggabungkannya dengan gambar asli hanya di area yang Anda coret.
+    **Manfaat:** Memperbaiki area yang terlalu terang (*overexposed*) atau terlalu gelap (*underexposed*) tanpa mengubah keseluruhan foto.
     """)
 
 # --- Enhancement ---
@@ -86,7 +93,7 @@ with st.expander("✨ Enhancement (CLAHE, Brightness/Contrast, Unsharp Mask)", e
     **Manfaat:** Memberikan kontrol lebih besar atas penajaman.
     """)
 
-# --- Transformasi (BARU) ---
+# --- Transformasi ---
 with st.expander("🔄 Transformasi (Rotasi, Flip)", expanded=False):
     st.subheader("Rotasi")
     st.markdown("""

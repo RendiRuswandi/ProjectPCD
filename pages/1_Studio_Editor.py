@@ -90,36 +90,20 @@ def apply_sepia(img):
     except Exception as e: 
         st.error(f"Error Sepia: {e}"); return img
 
-# --- PERBAIKAN: Logika Cold/Warm ---
 def apply_cold_warm(img, slider_val):
-    # slider_val: -100 (cold/biru) to 100 (warm/kuning)
     if slider_val == 0:
         return img
     try:
-        val = int(slider_val) # Gunakan nilai penuh
-        
-        # LUT untuk menambah
-        # val=50 -> clip(arange + 50) -> [50..255]
-        # val=-50 -> clip(arange - 50) -> [0..205]
+        val = int(slider_val)
         increase_lut = np.clip(np.arange(256) + val, 0, 255).astype(np.uint8)
-        
-        # LUT untuk mengurangi
-        # val=50 -> clip(arange - 50) -> [0..205]
-        # val=-50 -> clip(arange - (-50)) -> [50..255]
         decrease_lut = np.clip(np.arange(256) - val, 0, 255).astype(np.uint8)
-
         b, g, r = cv2.split(img)
-        
-        if slider_val > 0: # Kanan -> Hangat (Kuning/Oranye)
-            r = cv2.LUT(r, increase_lut) # Tingkatkan Merah
-            b = cv2.LUT(b, decrease_lut) # Kurangi Biru
-        else: # Kiri -> Dingin (Biru)
-            # val negatif, misal -50.
-            # increase_lut -> [0..205] (Mengurangi)
-            # decrease_lut -> [50..255] (Menambah)
-            r = cv2.LUT(r, increase_lut) # Kurangi Merah (karena val negatif)
-            b = cv2.LUT(b, decrease_lut) # Tambah Biru (karena val negatif)
-            
+        if slider_val > 0: 
+            r = cv2.LUT(r, increase_lut) 
+            b = cv2.LUT(b, decrease_lut) 
+        else: 
+            r = cv2.LUT(r, increase_lut) 
+            b = cv2.LUT(b, decrease_lut) 
         return cv2.merge((b, g, r))
     except Exception as e: 
         st.error(f"Error Koreksi Warna: {e}"); return img
@@ -141,7 +125,8 @@ def apply_inpainting(img, mask_gray, radius, method_flag):
     try:
         mask = mask_gray.astype(np.uint8)
         if len(mask.shape) == 3: mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-        _, mask_binary = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+        # Threshold: ambil semua piksel yang tidak hitam pekat ( > 1)
+        _, mask_binary = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
         if img.shape[:2] != mask_binary.shape[:2]:
              mask_binary = cv2.resize(mask_binary, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
         if len(img.shape) == 3 and img.shape[2] == 3:
@@ -196,9 +181,7 @@ def apply_rotation(img, angle):
     except Exception as e: 
         st.error(f"Error Rotasi: {e}"); return img
 
-# --- FUNGSI BARU: Flip ---
 def apply_flip(img, flip_code):
-    # flip_code: 0 = Vertikal (X-axis), 1 = Horizontal (Y-axis)
     try:
         return cv2.flip(img, flip_code)
     except Exception as e:
@@ -276,6 +259,7 @@ with st.sidebar:
 # --- Area Konten Utama ---
 
 # --- Navigasi di HALAMAN UTAMA ---
+# (Kita pakai st.radio(horizontal=True) karena st.tabs tidak ada di v1.17.0)
 feature_tab = st.radio(
     "Pilih Kategori Fitur:",
     ("🎞️ Filtering", "🛠️ Restorasi", "✨ Enhancement", "🔄 Transformasi", "🎨 Analisis"),
@@ -337,7 +321,10 @@ else:
     elif feature_tab == "🛠️ Restorasi":
         st.header("🛠️ Restorasi Citra")
         
-        restore_mode = st.radio("Pilih Mode Restorasi:", ["Reduksi Noise", "(Unik) Inpainting Interaktif"], key="restore_mode_radio")
+        # --- TAMBAHKAN DODGE & BURN KE PILIHAN ---
+        restore_mode = st.radio("Pilih Mode Restorasi:", 
+                                ["Reduksi Noise", "(Unik) Inpainting Interaktif", "🖌️ Dodge & Burn Interaktif"], 
+                                key="restore_mode_radio")
         
         if restore_mode == "Reduksi Noise":
             st.subheader("Reduksi Noise")
@@ -387,22 +374,28 @@ else:
             with col1_i:
                 st.markdown("**Kanvas Masking** (Gambar di sini)")
                 stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
-                bg_pil = cv2_to_pil(image_cv_bgr) 
+                
+                # --- PERBAIKAN 3.1: BACKGROUND KANVAS INPAINTING ---
+                # Gunakan 'image_pil_orig' (PIL Asli)
+                bg_pil = image_pil_orig.copy()
                 
                 aspect_ratio = bg_pil.height / bg_pil.width
                 CANVAS_WIDTH = 600
                 CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
                 
-                if bg_pil:
-                    bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
-                else:
-                    bg_pil_resized = None
-
+                # Resize PIL image
+                bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
+                
+                # Pastikan formatnya RGBA untuk st_canvas v0.9.3
+                if bg_pil_resized.mode != 'RGBA':
+                    bg_pil_resized = bg_pil_resized.convert('RGBA')
+                
+                # `fill_color` mengontrol warna coretan saat `drawing_mode="freedraw"`
                 canvas_result_inpainting = st_canvas(
-                    fill_color="rgba(255, 0, 0, 0.3)",
+                    fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
                     stroke_width=stroke_width_inp,
-                    stroke_color="#FF0000", 
-                    background_image=bg_pil_resized, 
+                    stroke_color="rgba(0, 0, 0, 0)", # Tidak terpakai di freedraw
+                    background_image=bg_pil_resized, # SEKARANG HARUSNYA MUNCUL
                     update_streamlit=True,
                     height=CANVAS_HEIGHT,
                     width=CANVAS_WIDTH,
@@ -420,17 +413,93 @@ else:
                 mask_data_canvas = None
                 
                 if canvas_result_inpainting.image_data is not None:
-                    # --- PERBAIKAN KUNCI DI SINI ---
-                    # Coretan ada di channel Alpha (indeks 3), bukan Merah (indeks 0)
+                    # --- PERBAIKAN 3.2: LOGIKA MASKER INPAINTING ---
+                    # Coretan (merah transparan) ada di channel Alpha (indeks 3)
+                    # Ambil channel Alpha
                     mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
                 
+                # Cek apakah ada piksel yang di-masker (apakah ada coretan)
                 if mask_data_canvas is not None and np.sum(mask_data_canvas > 0) > 0:
                     with st.spinner("Menerapkan Inpainting..."):
-                         mask_resized_to_orig = cv2.resize(mask_data_canvas, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
+                         # Buat masker biner (0 atau 255) dari channel Alpha
+                         mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
+                         mask_resized_to_orig = cv2.resize(mask_for_cv2, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
                          img_inpainted = apply_inpainting(image_cv_bgr, mask_resized_to_orig, radius_inp, method_flag_inp)
                     
                     st.image(cv2_to_pil(img_inpainted), caption="Hasil Inpainting", use_column_width=True)
                     get_image_download_button(img_inpainted, filename_for_download, "Inpainting")
+                else:
+                    st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
+
+        # --- FITUR BARU: DODGE & BURN ---
+        elif restore_mode == "🖌️ Dodge & Burn Interaktif":
+            st.subheader("Dodge & Burn Interaktif")
+            st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
+            
+            # Pengaturan Kuas
+            db_mode = st.radio("Pilih Mode Kuas:", ("Dodge (Mencerahkan)", "Burn (Menggelapkan)"), key="db_mode")
+            db_strength = st.slider("Kekuatan Kuas", 1, 50, 20, key="db_strength")
+            
+            col1_db, col2_db = st.columns(2)
+
+            with col1_db:
+                st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
+                stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
+                
+                # Logika Latar Belakang Kanvas (Sama seperti Inpainting)
+                bg_pil_db = image_pil_orig.copy()
+                aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
+                CANVAS_WIDTH_DB = 600
+                CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
+                bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
+                if bg_pil_resized_db.mode != 'RGBA':
+                    bg_pil_resized_db = bg_pil_resized_db.convert('RGBA')
+                
+                # Ubah warna coretan berdasarkan mode
+                fill_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
+                
+                canvas_result_db = st_canvas(
+                    fill_color=fill_color_db,
+                    stroke_width=stroke_width_db,
+                    stroke_color="rgba(0, 0, 0, 0)",
+                    background_image=bg_pil_resized_db, 
+                    update_streamlit=True,
+                    height=CANVAS_HEIGHT_DB,
+                    width=CANVAS_WIDTH_DB,
+                    drawing_mode="freedraw",
+                    key="canvas_db",
+                )
+
+            with col2_db:
+                st.markdown("**Hasil Dodge & Burn**")
+                
+                img_db_result = image_cv_bgr.copy()
+                mask_data_db = None
+
+                if canvas_result_db.image_data is not None:
+                    # Ambil masker dari channel Alpha
+                    mask_data_db = canvas_result_db.image_data[:, :, 3] 
+
+                if mask_data_db is not None and np.sum(mask_data_db > 0) > 0:
+                    with st.spinner("Menerapkan Dodge/Burn..."):
+                        # Tentukan kekuatan (positif untuk dodge, negatif untuk burn)
+                        strength = db_strength if db_mode == "Dodge (Mencerahkan)" else -db_strength
+                        
+                        # Buat versi gambar yang sudah difilter
+                        image_filtered = apply_brightness_contrast(image_cv_bgr, strength, 0)
+                        
+                        # Siapkan masker
+                        mask_resized = cv2.resize(mask_data_db, (image_cv_bgr.shape[1], image_cv_bgr.shape[0]))
+                        # Ubah masker ke 3 channel (agar bisa menggabung gambar warna)
+                        mask_3channel = cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR) > 0
+                        
+                        # Gabungkan gambar
+                        # Di mana ada masker (True), ambil dari image_filtered.
+                        # Di mana tidak ada masker (False), ambil dari image_cv_bgr (original).
+                        img_db_result = np.where(mask_3channel, image_filtered, image_cv_bgr)
+
+                    st.image(cv2_to_pil(img_db_result), caption="Hasil Dodge & Burn", use_column_width=True)
+                    get_image_download_button(img_db_result, filename_for_download, "DodgeBurn")
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
@@ -603,4 +672,4 @@ else:
             
             st.pyplot(fig_hist)
         else:
-            st.warning("Gagal menghitung histogram.")
+            st.warning("Gagal memproses gambar untuk ditampilkan.")
