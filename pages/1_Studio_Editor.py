@@ -102,7 +102,7 @@ def apply_brightness_contrast(img, brightness, contrast):
     beta = brightness
     try: return cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
     except Exception as e: st.error(f"Error Brightness/Contrast: {e}"); return img
-# (Fungsi-fungsi PCD lainnya: blur, sharpen, sepia, cold_warm, median, bilateral, clahe, unsharp, rotate, flip, color_palette, histogram)
+# (Fungsi-fungsi PCD lainnya...)
 def apply_gaussian_blur(img, ksize):
     if ksize % 2 == 0: ksize += 1
     return cv2.GaussianBlur(img, (ksize, ksize), 0)
@@ -325,43 +325,42 @@ else:
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        # --- Inpainting Interaktif (PERBAIKAN ERROR ATTRIBUTE) ---
+        # --- Inpainting Interaktif (PERBAIKAN FINAL UNTUK VERSI LAMA) ---
         elif restore_mode == "(Unik) Inpainting Interaktif":
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
             
             col1_i, col2_i = st.columns(2)
-            
-            with col1_i:
-                st.markdown("**Kanvas Masking** (Gambar di sini)")
-                stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
-                
-                # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
-                bg_pil = image_pil_orig.copy()
-                aspect_ratio = bg_pil.height / bg_pil.width
-                CANVAS_WIDTH = 600
-                CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
-                
-                # PIL Image diubah ukurannya lalu dikonversi ke Base64 (string)
-                bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT)) 
-                background_b64_inp = pil_to_base64(bg_pil_resized) # <-- Ini adalah String (str)
+            canvas_result_inpainting = None # Inisialisasi di luar blok agar bisa diakses di col2
 
-                if background_b64_inp:
-                    canvas_result_inpainting = st_canvas(
-                        fill_color="rgba(255, 0, 0, 0.5)", 
-                        stroke_width=stroke_width_inp,
-                        stroke_color="rgba(0, 0, 0, 0)", 
-                        background_image=background_b64_inp, # <-- String (st_canvas tidak akan resize lagi)
-                        update_streamlit=True,
-                        height=CANVAS_HEIGHT, # <-- Tentukan ukuran secara eksplisit
-                        width=CANVAS_WIDTH,   # <-- Tentukan ukuran secara eksplisit
-                        drawing_mode="freedraw",
-                        key="canvas_inpainting",
-                    )
-                else:
-                    st.warning("Gagal membuat latar belakang kanvas.")
-                    canvas_result_inpainting = None
+            if image_pil_orig is not None: # Pengecekan penting
+                with col1_i:
+                    st.markdown("**Kanvas Masking** (Gambar di sini)")
+                    stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
+                    
+                    # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
+                    bg_pil = image_pil_orig.copy()
+                    aspect_ratio = bg_pil.height / bg_pil.width
+                    CANVAS_WIDTH = 600
+                    CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
+                    
+                    bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT)) 
+                    background_b64_inp = pil_to_base64(bg_pil_resized)
 
+                    if background_b64_inp:
+                        canvas_result_inpainting = st_canvas(
+                            fill_color="rgba(255, 0, 0, 0.5)", 
+                            stroke_width=stroke_width_inp,
+                            stroke_color="rgba(0, 0, 0, 0)", 
+                            background_image=background_b64_inp, 
+                            update_streamlit=True,
+                            height=CANVAS_HEIGHT, 
+                            width=CANVAS_WIDTH,   
+                            drawing_mode="freedraw",
+                            key="canvas_inpainting",
+                        )
+                    else:
+                        st.warning("Gagal membuat latar belakang kanvas.")
 
             with col2_i:
                 st.markdown("**Hasil Inpainting**")
@@ -386,7 +385,7 @@ else:
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
-        # --- Dodge & Burn Interaktif (PERBAIKAN ERROR ATTRIBUTE) ---
+        # --- Dodge & Burn Interaktif (PERBAIKAN FINAL UNTUK VERSI LAMA) ---
         elif restore_mode == "🖌️ Dodge & Burn Interaktif":
             st.subheader("Dodge & Burn Interaktif")
             st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
@@ -398,39 +397,38 @@ else:
                 db_strength = st.slider("Kekuatan Kuas", 1, 50, 20, key="db_strength")
             
             col1_db, col2_db = st.columns(2)
+            canvas_result_db = None # Inisialisasi di luar blok agar bisa diakses di col2
 
-            with col1_db:
-                st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
-                stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
-                
-                # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
-                bg_pil_db = image_pil_orig.copy()
-                aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
-                CANVAS_WIDTH_DB = 600
-                CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
-                
-                # PIL Image diubah ukurannya lalu dikonversi ke Base64 (string)
-                bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
-                background_b64_db = pil_to_base64(bg_pil_resized_db) # <-- Ini adalah String (str)
-                
-                stroke_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
-                
-                if background_b64_db:
-                    canvas_result_db = st_canvas(
-                        fill_color="rgba(0, 0, 0, 0)", 
-                        stroke_width=stroke_width_db,
-                        stroke_color=stroke_color_db, 
-                        background_image=background_b64_db, # <-- String (st_canvas tidak akan resize lagi)
-                        update_streamlit=True,
-                        height=CANVAS_HEIGHT_DB, # <-- Tentukan ukuran secara eksplisit
-                        width=CANVAS_WIDTH_DB,   # <-- Tentukan ukuran secara eksplisit
-                        drawing_mode="freedraw",
-                        key="canvas_db",
-                    )
-                else:
-                    st.warning("Gagal membuat latar belakang kanvas.")
-                    canvas_result_db = None
-
+            if image_pil_orig is not None: # Pengecekan penting
+                with col1_db:
+                    st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
+                    stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
+                    
+                    # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
+                    bg_pil_db = image_pil_orig.copy()
+                    aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
+                    CANVAS_WIDTH_DB = 600
+                    CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
+                    
+                    bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
+                    background_b64_db = pil_to_base64(bg_pil_resized_db)
+                    
+                    stroke_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
+                    
+                    if background_b64_db:
+                        canvas_result_db = st_canvas(
+                            fill_color="rgba(0, 0, 0, 0)", 
+                            stroke_width=stroke_width_db,
+                            stroke_color=stroke_color_db, 
+                            background_image=background_b64_db, 
+                            update_streamlit=True,
+                            height=CANVAS_HEIGHT_DB, 
+                            width=CANVAS_WIDTH_DB,   
+                            drawing_mode="freedraw",
+                            key="canvas_db",
+                        )
+                    else:
+                        st.warning("Gagal membuat latar belakang kanvas.")
 
             with col2_db:
                 st.markdown("**Hasil Dodge & Burn**")
