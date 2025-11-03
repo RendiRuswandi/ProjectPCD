@@ -6,18 +6,6 @@ st.set_page_config(
     layout="centered"
 )
 
-# Sembunyikan navigasi sidebar di halaman ini
-st.markdown(
-    """
-    <style>
-        [data-testid="stSidebarNav"] {
-            display: none;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # Konten Halaman
 st.markdown("<br><br><br>", unsafe_allow_html=True) # Spacer
 st.markdown("<h1 style='text-align: center; font-size: 3.5rem;'>🔬</h1>", unsafe_allow_html=True)
