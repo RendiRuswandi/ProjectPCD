@@ -40,6 +40,7 @@ def cv2_to_pil(cv2_image):
 def pil_to_base64(img_pil):
     """Konversi objek PIL Image ke Base64 String (Data URL)."""
     try:
+        # PENTING: Konversi ke RGB/PNG Base64 yang paling stabil di web
         if img_pil.mode == 'RGBA':
             img_pil = img_pil.convert('RGB') 
             
@@ -79,7 +80,7 @@ def get_image_download_button(img_cv2, filename_base, operation_name):
     except Exception as e:
         st.error(f"Error download link: {e}")
 
-# --- Fungsi PCD ---
+# --- Fungsi PCD (Singkat) ---
 def apply_inpainting(img, mask_gray, radius, method_flag):
     if mask_gray is None or np.sum(mask_gray) == 0:
         st.info("Masker inpainting kosong. Gambar area pada kanvas untuk memulai.")
@@ -102,7 +103,7 @@ def apply_brightness_contrast(img, brightness, contrast):
     beta = brightness
     try: return cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
     except Exception as e: st.error(f"Error Brightness/Contrast: {e}"); return img
-# (Fungsi-fungsi PCD lainnya...)
+
 def apply_gaussian_blur(img, ksize):
     if ksize % 2 == 0: ksize += 1
     return cv2.GaussianBlur(img, (ksize, ksize), 0)
@@ -123,14 +124,12 @@ def apply_sepia(img):
 def apply_cold_warm(img, temp_val):
     temp_val = np.clip(temp_val, -100, 100)
     img_out = img.copy().astype(np.float32) / 255.0
-    
     if temp_val > 0:
         img_out[:, :, 2] = np.clip(img_out[:, :, 2] + temp_val / 300.0, 0, 1)
         img_out[:, :, 0] = np.clip(img_out[:, :, 0] - temp_val / 300.0, 0, 1)
     elif temp_val < 0:
         img_out[:, :, 0] = np.clip(img_out[:, :, 0] + abs(temp_val) / 300.0, 0, 1)
         img_out[:, :, 2] = np.clip(img_out[:, :, 2] - abs(temp_val) / 300.0, 0, 1)
-        
     return (img_out * 255).astype(np.uint8)
 def apply_median_blur(img, ksize):
     if ksize % 2 == 0: ksize += 1
@@ -165,30 +164,24 @@ def analyze_color_palette(img, k):
     dominant_colors = kmeans.cluster_centers_.astype(int)
     labels = kmeans.labels_
     counts = np.bincount(labels)
-    
     sorted_indices = np.argsort(counts)[::-1]
     sorted_colors = dominant_colors[sorted_indices]
     sorted_counts = counts[sorted_indices]
-
     hex_colors = ['#%02x%02x%02x' % (r, g, b) for r, g, b in sorted_colors]
     return hex_colors, sorted_counts
 def get_histogram(img):
     hist_data = {}
-    
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     hist_gray = cv2.calcHist([gray], [0], None, [256], [0, 256])
     hist_data['Grayscale'] = hist_gray
-    
     colors_rgb = ('b', 'g', 'r')
     hist_rgb = {}
     for i, col in enumerate(colors_rgb):
         hist_rgb[col] = cv2.calcHist([img], [i], None, [256], [0, 256])
     hist_data['RGB'] = hist_rgb
-
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     hist_h = cv2.calcHist([hsv], [0], None, [180], [0, 180])
     hist_data['HSV'] = {'H': hist_h}
-    
     return hist_data
 
 # --- UI STREAMLIT ---
@@ -203,6 +196,16 @@ if 'image_cv_bgr' not in st.session_state:
     st.session_state['image_cv_bgr'] = None
 if 'filename_for_download' not in st.session_state:
     st.session_state['filename_for_download'] = "untitled.png" 
+# Tambahan: Inisialisasi state untuk Base64 agar tidak Null saat render awal
+if 'b64_inp' not in st.session_state:
+    st.session_state['b64_inp'] = None
+if 'b64_db' not in st.session_state:
+    st.session_state['b64_db'] = None
+if 'canvas_width' not in st.session_state:
+    st.session_state['canvas_width'] = 600
+if 'canvas_height' not in st.session_state:
+    st.session_state['canvas_height'] = 400
+
 
 # Referensi mudah
 image_pil_orig = st.session_state.get('image_pil_orig')
@@ -217,8 +220,24 @@ with st.sidebar:
     if uploaded_file:
         try:
             st.session_state['filename_for_download'] = uploaded_file.name
-            st.session_state['image_pil_orig'] = Image.open(uploaded_file)
-            st.session_state['image_cv_bgr'] = pil_to_cv2(st.session_state['image_pil_orig'])
+            
+            # Memuat dan mengkonversi gambar
+            img_pil_loaded = Image.open(uploaded_file)
+            st.session_state['image_pil_orig'] = img_pil_loaded
+            st.session_state['image_cv_bgr'] = pil_to_cv2(img_pil_loaded)
+            
+            # Menghitung ukuran dan menyimpan Base64 untuk kanvas
+            bg_pil = st.session_state['image_pil_orig'].copy()
+            aspect_ratio = bg_pil.height / bg_pil.width
+            CANVAS_WIDTH = 600
+            CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
+            
+            st.session_state['canvas_width'] = CANVAS_WIDTH
+            st.session_state['canvas_height'] = CANVAS_HEIGHT
+            
+            bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT))
+            st.session_state['b64_inp'] = pil_to_base64(bg_pil_resized)
+            st.session_state['b64_db'] = st.session_state['b64_inp'] # Keduanya pakai Base64 yang sama
             
             st.image(st.session_state['image_pil_orig'], caption="Gambar Asli (Preview)", use_column_width=True)
             
@@ -234,6 +253,8 @@ with st.sidebar:
         st.session_state['image_pil_orig'] = None
         st.session_state['image_cv_bgr'] = None
         st.session_state['filename_for_download'] = "untitled.png"
+        st.session_state['b64_inp'] = None
+        st.session_state['b64_db'] = None
         st.experimental_rerun()
 
 
@@ -325,42 +346,39 @@ else:
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        # --- Inpainting Interaktif (PERBAIKAN FINAL UNTUK VERSI LAMA) ---
+        # --- Inpainting Interaktif (PERBAIKAN PALING AMAN UNTUK 0.9.3) ---
         elif restore_mode == "(Unik) Inpainting Interaktif":
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
             
             col1_i, col2_i = st.columns(2)
-            canvas_result_inpainting = None # Inisialisasi di luar blok agar bisa diakses di col2
+            canvas_result_inpainting = None 
 
-            if image_pil_orig is not None: # Pengecekan penting
+            if st.session_state['b64_inp']: # Pastikan Base64 sudah ada
                 with col1_i:
                     st.markdown("**Kanvas Masking** (Gambar di sini)")
                     stroke_width_inp = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp")
                     
-                    # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
-                    bg_pil = image_pil_orig.copy()
-                    aspect_ratio = bg_pil.height / bg_pil.width
-                    CANVAS_WIDTH = 600
-                    CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600) 
+                    # Ambil Base64 dan ukuran dari State
+                    background_b64_inp = st.session_state['b64_inp']
+                    CANVAS_WIDTH = st.session_state['canvas_width']
+                    CANVAS_HEIGHT = st.session_state['canvas_height']
                     
-                    bg_pil_resized = bg_pil.resize((CANVAS_WIDTH, CANVAS_HEIGHT)) 
-                    background_b64_inp = pil_to_base64(bg_pil_resized)
+                    # PENTING UNTUK 0.9.3: Kirim Base64 dan ukuran yang sudah dihitung
+                    canvas_result_inpainting = st_canvas(
+                        fill_color="rgba(255, 0, 0, 0.5)", 
+                        stroke_width=stroke_width_inp,
+                        stroke_color="rgba(0, 0, 0, 0)", 
+                        background_image=background_b64_inp, 
+                        update_streamlit=True,
+                        height=CANVAS_HEIGHT, 
+                        width=CANVAS_WIDTH,   
+                        drawing_mode="freedraw",
+                        key="canvas_inpainting",
+                    )
+                else:
+                    st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
 
-                    if background_b64_inp:
-                        canvas_result_inpainting = st_canvas(
-                            fill_color="rgba(255, 0, 0, 0.5)", 
-                            stroke_width=stroke_width_inp,
-                            stroke_color="rgba(0, 0, 0, 0)", 
-                            background_image=background_b64_inp, 
-                            update_streamlit=True,
-                            height=CANVAS_HEIGHT, 
-                            width=CANVAS_WIDTH,   
-                            drawing_mode="freedraw",
-                            key="canvas_inpainting",
-                        )
-                    else:
-                        st.warning("Gagal membuat latar belakang kanvas.")
 
             with col2_i:
                 st.markdown("**Hasil Inpainting**")
@@ -385,7 +403,7 @@ else:
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
-        # --- Dodge & Burn Interaktif (PERBAIKAN FINAL UNTUK VERSI LAMA) ---
+        # --- Dodge & Burn Interaktif (PERBAIKAN PALING AMAN UNTUK 0.9.3) ---
         elif restore_mode == "🖌️ Dodge & Burn Interaktif":
             st.subheader("Dodge & Burn Interaktif")
             st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
@@ -397,38 +415,35 @@ else:
                 db_strength = st.slider("Kekuatan Kuas", 1, 50, 20, key="db_strength")
             
             col1_db, col2_db = st.columns(2)
-            canvas_result_db = None # Inisialisasi di luar blok agar bisa diakses di col2
+            canvas_result_db = None 
 
-            if image_pil_orig is not None: # Pengecekan penting
+            if st.session_state['b64_db']: # Pastikan Base64 sudah ada
                 with col1_db:
                     st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
                     stroke_width_db = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db")
                     
-                    # --- LOGIKA KONVERSI DAN RESIZE KE BASE64 ---
-                    bg_pil_db = image_pil_orig.copy()
-                    aspect_ratio_db = bg_pil_db.height / bg_pil_db.width
-                    CANVAS_WIDTH_DB = 600
-                    CANVAS_HEIGHT_DB = min(int(CANVAS_WIDTH_DB * aspect_ratio_db), 600) 
-                    
-                    bg_pil_resized_db = bg_pil_db.resize((CANVAS_WIDTH_DB, CANVAS_HEIGHT_DB))
-                    background_b64_db = pil_to_base64(bg_pil_resized_db)
+                    # Ambil Base64 dan ukuran dari State
+                    background_b64_db = st.session_state['b64_db']
+                    CANVAS_WIDTH_DB = st.session_state['canvas_width']
+                    CANVAS_HEIGHT_DB = st.session_state['canvas_height']
                     
                     stroke_color_db = "rgba(255, 255, 255, 0.5)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.5)"
                     
-                    if background_b64_db:
-                        canvas_result_db = st_canvas(
-                            fill_color="rgba(0, 0, 0, 0)", 
-                            stroke_width=stroke_width_db,
-                            stroke_color=stroke_color_db, 
-                            background_image=background_b64_db, 
-                            update_streamlit=True,
-                            height=CANVAS_HEIGHT_DB, 
-                            width=CANVAS_WIDTH_DB,   
-                            drawing_mode="freedraw",
-                            key="canvas_db",
-                        )
-                    else:
-                        st.warning("Gagal membuat latar belakang kanvas.")
+                    # PENTING UNTUK 0.9.3: Kirim Base64 dan ukuran yang sudah dihitung
+                    canvas_result_db = st_canvas(
+                        fill_color="rgba(0, 0, 0, 0)", 
+                        stroke_width=stroke_width_db,
+                        stroke_color=stroke_color_db, 
+                        background_image=background_b64_db, 
+                        update_streamlit=True,
+                        height=CANVAS_HEIGHT_DB, 
+                        width=CANVAS_WIDTH_DB,   
+                        drawing_mode="freedraw",
+                        key="canvas_db",
+                    )
+                else:
+                    st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
+
 
             with col2_db:
                 st.markdown("**Hasil Dodge & Burn**")
