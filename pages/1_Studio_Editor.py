@@ -90,6 +90,7 @@ def apply_sepia(img):
     except Exception as e: 
         st.error(f"Error Sepia: {e}"); return img
 
+# --- PERBAIKAN: Logika Cold/Warm ---
 def apply_cold_warm(img, slider_val):
     # slider_val: -100 (cold/biru) to 100 (warm/kuning)
     if slider_val == 0:
@@ -98,9 +99,13 @@ def apply_cold_warm(img, slider_val):
         val = int(slider_val) # Gunakan nilai penuh
         
         # LUT untuk menambah
+        # val=50 -> clip(arange + 50) -> [50..255]
+        # val=-50 -> clip(arange - 50) -> [0..205]
         increase_lut = np.clip(np.arange(256) + val, 0, 255).astype(np.uint8)
         
         # LUT untuk mengurangi
+        # val=50 -> clip(arange - 50) -> [0..205]
+        # val=-50 -> clip(arange - (-50)) -> [50..255]
         decrease_lut = np.clip(np.arange(256) - val, 0, 255).astype(np.uint8)
 
         b, g, r = cv2.split(img)
@@ -109,6 +114,9 @@ def apply_cold_warm(img, slider_val):
             r = cv2.LUT(r, increase_lut) # Tingkatkan Merah
             b = cv2.LUT(b, decrease_lut) # Kurangi Biru
         else: # Kiri -> Dingin (Biru)
+            # val negatif, misal -50.
+            # increase_lut -> [0..205] (Mengurangi)
+            # decrease_lut -> [50..255] (Menambah)
             r = cv2.LUT(r, increase_lut) # Kurangi Merah (karena val negatif)
             b = cv2.LUT(b, decrease_lut) # Tambah Biru (karena val negatif)
             
@@ -188,6 +196,7 @@ def apply_rotation(img, angle):
     except Exception as e: 
         st.error(f"Error Rotasi: {e}"); return img
 
+# --- FUNGSI BARU: Flip ---
 def apply_flip(img, flip_code):
     # flip_code: 0 = Vertikal (X-axis), 1 = Horizontal (Y-axis)
     try:
