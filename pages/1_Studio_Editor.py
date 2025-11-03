@@ -346,7 +346,7 @@ else:
                 else:
                     st.warning("Gagal memproses gambar untuk ditampilkan.")
 
-        # --- Inpainting Interaktif (PERBAIKAN PALING AMAN UNTUK 0.9.3) ---
+        # --- Inpainting Interaktif (PERBAIKAN INDENTASI) ---
         elif restore_mode == "(Unik) Inpainting Interaktif":
             st.subheader("Inpainting Interaktif (Hapus Area)")
             st.info("Gunakan tools di bawah untuk menggambar masker (coretan) pada area yang ingin Anda hilangkan/perbaiki.")
@@ -376,8 +376,9 @@ else:
                         drawing_mode="freedraw",
                         key="canvas_inpainting",
                     )
-                else:
-                    st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
+            # Blok else ini sekarang memiliki indentasi yang benar
+            else: 
+                st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
 
 
             with col2_i:
@@ -403,7 +404,7 @@ else:
                 else:
                     st.image(image_pil_orig, caption="Gambar Asli (Belum ada masker)", use_column_width=True)
 
-        # --- Dodge & Burn Interaktif (PERBAIKAN PALING AMAN UNTUK 0.9.3) ---
+        # --- Dodge & Burn Interaktif (PERBAIKAN INDENTASI) ---
         elif restore_mode == "🖌️ Dodge & Burn Interaktif":
             st.subheader("Dodge & Burn Interaktif")
             st.info("Pilih mode, lalu coret area yang ingin Anda cerahkan (Dodge) atau gelapkan (Burn).")
@@ -441,8 +442,9 @@ else:
                         drawing_mode="freedraw",
                         key="canvas_db",
                     )
-                else:
-                    st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
+            # Blok else ini sekarang memiliki indentasi yang benar
+            else:
+                st.warning("Gagal memuat latar belakang Base64. Coba unggah ulang gambar.")
 
 
             with col2_db:
