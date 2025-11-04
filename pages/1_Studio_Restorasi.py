@@ -144,7 +144,7 @@ def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0
             left: 0;
             width: {CANVAS_WIDTH}px !important;
             height: {CANVAS_HEIGHT}px !important;
-            object-fit: contain; /* Menggunakan contain untuk menjaga rasio */
+            object-fit: fill; /* <--- PERBAIKAN: Menggunakan 'fill' agar sesuai dimensi Canvas */
         }}
         /* Menyesuaikan posisi canvas agar menumpuk di atas gambar */
         .canvas-stack-container div[data-testid="stCanvas"] {{
@@ -159,7 +159,8 @@ def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0
     st.markdown(f'<div class="canvas-stack-container">', unsafe_allow_html=True)
     
     # Lapisan 1: Gambar (terlihat)
-    st.image(bg_pil_resized, width=CANVAS_WIDTH)
+    # Catatan: st.image di sini akan dipaksa mengikuti CSS object-fit: fill; di atas
+    st.image(bg_pil_resized, width=CANVAS_WIDTH) 
     
     # Lapisan 2: Kanvas (transparan)
     canvas_result = st_canvas(
@@ -197,7 +198,6 @@ with st.sidebar:
     if 'original_pil' in st.session_state:
         if st.button("Reset ke Asli", key="reset_button_main"):
             st.session_state.processed_image = st.session_state.original_pil.copy()
-            # st.experimental_rerun() # Tidak perlu rerun, update state cukup
             st.success("Gambar telah direset ke asli.")
 
 # --- Area Kerja Utama ---
@@ -213,7 +213,6 @@ else:
         st.error("Gagal memproses gambar. Mohon upload ulang file.")
         del st.session_state.original_pil
         del st.session_state.processed_image
-        # st.experimental_rerun()
     
     feature_tab = st.radio(
         "Pilih Alat Restorasi:",
@@ -285,7 +284,7 @@ else:
             canvas_result = run_canvas(
                 image_pil_processed, 
                 key="canvas_inpainting", 
-                stroke_width=stroke_width, # FIX: Menggunakan stroke_width dari slider
+                stroke_width=stroke_width, 
                 stroke_color="rgba(255, 0, 0, 0.7)" # Kuas Merah untuk menandai
             )
         
@@ -315,7 +314,7 @@ else:
             st.markdown("**Pengaturan Kuas D&B**")
             db_mode = st.radio("Pilih Mode Kuas:", ("Dodge (Mencerahkan)", "Burn (Menggelapkan)"), key="db_mode")
             db_strength = st.slider("Kekuatan Kuas", 1, 50, 20, key="db_strength")
-            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db") # FIX: definisikan stroke_width di sini
+            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db") 
             
             # Warna kuas hanya sebagai indikator di kanvas
             stroke_color = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
@@ -325,7 +324,7 @@ else:
             canvas_result = run_canvas(
                 image_pil_processed, 
                 key="canvas_db", 
-                stroke_width=stroke_width, # FIX: Menggunakan stroke_width dari slider
+                stroke_width=stroke_width, 
                 stroke_color=stroke_color
             )
 
@@ -334,13 +333,13 @@ else:
             mask_data_canvas = canvas_result.image_data[:, :, 3] # Ambil Alpha channel
             if np.sum(mask_data_canvas > 0) > 0:
                 with st.spinner("Menerapkan Dodge/Burn..."):
-                    strength = db_strength # Kekuatan Dodge/Burn adalah jumlah Brightness
+                    strength = db_strength 
                     
                     # 1. Terapkan Brightness/Contrast ke SELURUH gambar
                     if db_mode == "Dodge (Mencerahkan)":
-                         image_filtered = apply_brightness_contrast(image_cv_processed, strength, 0)
+                           image_filtered = apply_brightness_contrast(image_cv_processed, strength, 0)
                     else: # Burn (Menggelapkan)
-                         image_filtered = apply_brightness_contrast(image_cv_processed, -strength, 0)
+                           image_filtered = apply_brightness_contrast(image_cv_processed, -strength, 0)
                     
                     # 2. Buat Mask Biner dan Resize ke ukuran gambar asli
                     mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
@@ -372,12 +371,16 @@ else:
     col_act1, col_act2 = st.columns(2)
     with col_act1:
         # Pengecekan penting: pastikan final_pil_image benar-benar berubah sebelum menerapkan
-        if final_pil_image != st.session_state.processed_image:
-             if st.button("Terapkan Perubahan Ini"):
-                st.session_state.processed_image = final_pil_image
-                st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
-        else:
-            st.info("Belum ada perubahan yang perlu diterapkan.")
+        # Catatan: Karena perbandingan antar objek PIL Image bisa rumit, kita gunakan status (final_pil_image != image_pil_processed) sebagai indikasi perubahan dari sisi user.
+        # Atau, buat tombol apply selalu ada jika tab bukan 'Auto' (semua operasi 'Auto' sudah diterapkan secara langsung)
+        is_changed = True # Anggap saja selalu berubah untuk Dodge/Burn/Inpainting agar tombol muncul
+        if feature_tab == "Auto (Noise & Detail)":
+             # Untuk 'Auto', kita perlu mekanisme yang lebih baik untuk deteksi perubahan yang sebenarnya
+             is_changed = False # Biarkan pengguna menekan tombol 'Terapkan' jika mereka ingin melanjutkan
+        
+        if st.button("Terapkan Perubahan Ini"):
+            st.session_state.processed_image = final_pil_image
+            st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
 
     with col_act2:
         get_image_download_button(final_pil_image, st.session_state.filename, operation_name)
