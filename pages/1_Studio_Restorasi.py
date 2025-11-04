@@ -245,10 +245,10 @@ else:
                 bg_pil_resized_inp = bg_pil_resized_inp.convert('RGBA')
             
             canvas_result_inpainting = st_canvas(
-                fill_color="rgba(255, 0, 0, 0.5)", 
+                # fill_color="rgba(255, 0, 0, 0.5)", # <-- DIHAPUS
                 stroke_width=stroke_width_inp,
                 stroke_color="rgba(255, 0, 0, 0.7)", # Kuas Merah
-                background_color="rgba(0, 0, 0, 0)", # <-- PERBAIKAN: Latar belakang transparan
+                background_color="rgba(0, 0, 0, 0)", # Latar belakang transparan
                 background_image=bg_pil_resized_inp, # Gunakan PIL RGBA
                 update_streamlit=True,
                 height=CANVAS_HEIGHT,
@@ -308,10 +308,10 @@ else:
             stroke_color_db = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
             
             canvas_result_db = st_canvas(
-                fill_color="rgba(0, 0, 0, 0)",
+                # fill_color="rgba(0, 0, 0, 0)", # <-- DIHAPUS
                 stroke_width=stroke_width_db,
                 stroke_color=stroke_color_db,
-                background_color="rgba(0, 0, 0, 0)", # <-- PERBAIKAN: Latar belakang transparan
+                background_color="rgba(0, 0, 0, 0)", # Latar belakang transparan
                 background_image=bg_pil_resized_db, # Gunakan PIL RGBA
                 update_streamlit=True,
                 height=CANVAS_HEIGHT_DB,
