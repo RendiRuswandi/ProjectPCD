@@ -5,7 +5,6 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
-# HAPUS 'import base64'
 
 # --- 1. Konfigurasi Halaman ---
 st.set_page_config(
@@ -36,8 +35,6 @@ def cv2_to_pil(cv2_image):
     except Exception as e:
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
-
-# HAPUS FUNGSI 'pil_to_base64'
 
 def get_image_download_button(img_pil, filename_base, operation_name):
     """Membuat tombol download untuk gambar PIL."""
@@ -136,7 +133,6 @@ with st.sidebar:
         st.image(st.session_state.original_pil, caption="Gambar Asli (Preview)", use_column_width=True)
     
     if 'original_pil' in st.session_state:
-        # --- PERBAIKAN: Hapus 'use_column_width=True' ---
         if st.button("Reset ke Asli", key="reset_button_main"):
             st.session_state.processed_image = st.session_state.original_pil.copy()
             st.success("Gambar telah direset ke asli.")
@@ -249,10 +245,11 @@ else:
                 bg_pil_resized_inp = bg_pil_resized_inp.convert('RGBA')
             
             canvas_result_inpainting = st_canvas(
-                fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
+                fill_color="rgba(255, 0, 0, 0.5)", 
                 stroke_width=stroke_width_inp,
-                stroke_color="rgba(255, 0, 0, 0.7)", # <-- PERBAIKAN: Kuas Merah
-                background_image=bg_pil_resized_inp, # <-- PERBAIKAN: Gunakan PIL RGBA
+                stroke_color="rgba(255, 0, 0, 0.7)", # Kuas Merah
+                background_color="rgba(0, 0, 0, 0)", # <-- PERBAIKAN: Latar belakang transparan
+                background_image=bg_pil_resized_inp, # Gunakan PIL RGBA
                 update_streamlit=True,
                 height=CANVAS_HEIGHT,
                 width=CANVAS_WIDTH,
@@ -265,7 +262,6 @@ else:
         operation_name = "Inpainting"
         
         if canvas_result_inpainting.image_data is not None:
-            # --- PERBAIKAN MASKER ---
             # Coretan ada di channel Alpha (indeks 3)
             mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
 
@@ -315,7 +311,8 @@ else:
                 fill_color="rgba(0, 0, 0, 0)",
                 stroke_width=stroke_width_db,
                 stroke_color=stroke_color_db,
-                background_image=bg_pil_resized_db, # <-- PERBAIKAN: Gunakan PIL RGBA
+                background_color="rgba(0, 0, 0, 0)", # <-- PERBAIKAN: Latar belakang transparan
+                background_image=bg_pil_resized_db, # Gunakan PIL RGBA
                 update_streamlit=True,
                 height=CANVAS_HEIGHT_DB,
                 width=CANVAS_WIDTH_DB,
@@ -328,7 +325,6 @@ else:
         operation_name = "DodgeBurn"
 
         if canvas_result_db.image_data is not None:
-            # --- PERBAIKAN MASKER ---
             # Ambil masker dari channel Alpha
             mask_data_db = canvas_result_db.image_data[:, :, 3] 
 
@@ -355,7 +351,6 @@ else:
     col_orig, col_proc = st.columns(2)
     with col_orig:
         st.markdown("**Original**")
-        # 'use_column_width' valid untuk st.image di v1.17.0
         st.image(image_pil_orig, use_column_width=True)
     
     with col_proc:
@@ -365,10 +360,8 @@ else:
     # Tombol Aksi di Bawah Gambar
     col_act1, col_act2 = st.columns(2)
     with col_act1:
-        # --- PERBAIKAN: Hapus 'use_column_width=True' ---
         if st.button("Terapkan Perubahan Ini"):
             st.session_state.processed_image = final_pil_image
             st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
     with col_act2:
-        # Tombol download tidak memiliki 'use_column_width'
         get_image_download_button(final_pil_image, st.session_state.filename, operation_name)
