@@ -1,12 +1,12 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Selamat Datang - Studio PCD",
+    page_title="Selamat Datang - Studio Restorasi",
     page_icon="✨",
     layout="centered"
 )
 
-# --- PERBAIKAN 1: Sembunyikan Navigasi Sidebar di Halaman Ini ---
+# --- PERBAIKAN: Sembunyikan Navigasi Sidebar di Halaman Ini ---
 st.markdown(
     """
     <style>
@@ -20,18 +20,17 @@ st.markdown(
 
 # Konten Halaman
 st.markdown("<br><br><br>", unsafe_allow_html=True) # Spacer
-st.markdown("<h1 style='text-align: center; font-size: 3.5rem;'>🔬</h1>", unsafe_allow_html=True)
-st.markdown("<h1 style='text-align: center;'>Studio PCD Interaktif</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Filter, Restorasi, dan Analisis Citra dalam Satu Aplikasi.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; font-size: 3.5rem;'>🛠️</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Studio Restorasi Foto</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Perbaiki, pulihkan, dan tingkatkan kualitas foto lama Anda.</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- PERBAIKAN 2: Tombol di Tengah ---
-# Kita gunakan 3 kolom, dan letakkan tombol di kolom tengah (col2)
+# --- PERBAIKAN: Tombol di Tengah ---
 col1, col2, col3 = st.columns([1.5, 2, 1.5]) 
 with col2:
     st.markdown(
         """
-        <a href="Studio_Editor" target="_self" style="
+        <a href="Studio_Restorasi" target="_self" style="
             display: inline-block;
             padding: 0.75rem 1.5rem;
             font-size: 1.1rem;
@@ -45,7 +44,7 @@ with col2:
             width: 100%;
             box-sizing: border-box;
         ">
-            Buka Studio Editor ➔
+            Buka Studio ➔
         </a>
         """,
         unsafe_allow_html=True
