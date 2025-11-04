@@ -5,7 +5,6 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
-# HAPUS 'import base64'
 
 # --- 1. Konfigurasi Halaman ---
 st.set_page_config(
@@ -36,8 +35,6 @@ def cv2_to_pil(cv2_image):
     except Exception as e:
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
-
-# HAPUS FUNGSI 'pil_to_base64'
 
 def get_image_download_button(img_pil, filename_base, operation_name):
     """Membuat tombol download untuk gambar PIL."""
@@ -136,6 +133,7 @@ with st.sidebar:
         st.image(st.session_state.original_pil, caption="Gambar Asli (Preview)", use_column_width=True)
     
     if 'original_pil' in st.session_state:
+        # --- PERBAIKAN: Hapus 'use_column_width=True' ---
         if st.button("Reset ke Asli", key="reset_button_main"):
             st.session_state.processed_image = st.session_state.original_pil.copy()
             st.success("Gambar telah direset ke asli.")
@@ -354,6 +352,7 @@ else:
     col_orig, col_proc = st.columns(2)
     with col_orig:
         st.markdown("**Original**")
+        # 'use_column_width' valid untuk st.image di v1.17.0
         st.image(image_pil_orig, use_column_width=True)
     
     with col_proc:
@@ -363,10 +362,10 @@ else:
     # Tombol Aksi di Bawah Gambar
     col_act1, col_act2 = st.columns(2)
     with col_act1:
-        # Tombol untuk menyimpan hasil proses ke state
-        if st.button("Terapkan Perubahan Ini", use_column_width=True):
+        # --- PERBAIKAN: Hapus 'use_column_width=True' ---
+        if st.button("Terapkan Perubahan Ini"):
             st.session_state.processed_image = final_pil_image
             st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
     with col_act2:
-        # Tombol download
+        # Tombol download tidak memiliki 'use_column_width'
         get_image_download_button(final_pil_image, st.session_state.filename, operation_name)
