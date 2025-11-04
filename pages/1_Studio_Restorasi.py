@@ -1,7 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw # Import ImageDraw untuk kasus tertentu (walau tidak dipakai saat ini)
+from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
@@ -105,20 +105,20 @@ def apply_inpainting(img_cv, mask_gray, radius, method_flag):
         st.error(f"Error Inpainting: {e}")
         return img_cv
 
-# --- FUNGSI UMUM KANVAS (FIXED) ---
+# --- FUNGSI UMUM KANVAS ---
 def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0, 0, 0)"):
     """Menjalankan kanvas drawable dengan gambar sebagai latar belakang yang ditumpuk."""
-    # Tentukan ukuran
     aspect_ratio = pil_image.height / pil_image.width
     CANVAS_WIDTH = 600
     CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600)
     
-    # Resize gambar untuk latar belakang
-    bg_pil_resized = pil_image.resize((CANVAS_WIDTH, CANVAS_HEIGHT), Image.Resampling.LANCZOS)
+    # Resize gambar untuk latar belakang, PIL to CV2
+    bg_cv_resized = pil_to_cv2(pil_image.resize((CANVAS_WIDTH, CANVAS_HEIGHT), Image.Resampling.LANCZOS))
     
-    # Paksa RGBA (penting untuk st_canvas)
-    if bg_pil_resized.mode != 'RGBA':
-        bg_pil_resized = bg_pil_resized.convert('RGBA')
+    # Mengonversi kembali ke PIL untuk st_canvas background_image
+    # *Namun*, kita tidak akan menggunakan background_image pada st_canvas
+    # untuk menghindari duplikasi tampilan dan isu ukuran.
+    # Kita akan menampilkan gambar latar belakang secara terpisah dan menumpuk kanvas.
 
     # --- Kunci: Tumpukan Gambar dan Kanvas dengan CSS ---
     st.markdown(f"""
@@ -148,15 +148,16 @@ def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0
     st.markdown(f'<div class="canvas-stack-container">', unsafe_allow_html=True)
     
     # Lapisan 1: Gambar (terlihat)
-    st.image(bg_pil_resized, width=CANVAS_WIDTH)
+    # Ini adalah gambar yang akan digambar di atasnya.
+    st.image(cv2_to_pil(bg_cv_resized), width=CANVAS_WIDTH) 
     
     # Lapisan 2: Kanvas (transparan)
     canvas_result = st_canvas(
         fill_color=fill_color,
-        stroke_width=stroke_width, # Diambil dari parameter
+        stroke_width=stroke_width, 
         stroke_color=stroke_color,
         background_color="rgba(0, 0, 0, 0)", # Transparan
-        background_image=None, 
+        background_image=None, # Tetap None karena kita menumpuk
         update_streamlit=True,
         height=CANVAS_HEIGHT,
         width=CANVAS_WIDTH,
@@ -206,7 +207,8 @@ else:
     )
     st.markdown("---")
 
-    final_pil_image = image_pil_processed
+    # final_pil_image akan menyimpan hasil visual aktual, termasuk coretan jika ada
+    final_pil_image = image_pil_processed 
     operation_name = "Current"
 
     # --- TAB 1: AUTO (NOISE & DETAIL) ---
@@ -257,7 +259,7 @@ else:
         
         with col1_i:
             st.markdown("**Pengaturan Kuas Inpainting**")
-            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp") # FIX: Definisi stroke_width
+            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_inp") 
             st.markdown("**Pengaturan Inpainting**")
             radius_inp = st.slider("Radius Perbaikan", 1, 15, 3, key="inp_radius")
             method_str_inp = st.radio("Metode:", ("TELEA (Cepat)", "NS (Kualitas Tinggi)"), key="inp_method")
@@ -265,26 +267,47 @@ else:
             
         with col2_i:
             st.markdown("**Kanvas Masking** (Gambar di sini)")
+            # Tampilkan kanvas untuk menggambar mask
             canvas_result = run_canvas(
-                image_pil_processed, 
+                image_pil_processed, # Gambar yang sedang diproses sebagai latar belakang di kanvas
                 key="canvas_inpainting", 
-                stroke_width=stroke_width, # FIX: Meneruskan stroke_width
-                stroke_color="rgba(255, 0, 0, 0.7)" # Kuas Merah
+                stroke_width=stroke_width, 
+                stroke_color="rgba(255, 0, 0, 0.7)" # Kuas Merah transparan untuk menandai area inpainting
             )
         
         operation_name = "Inpainting"
+        img_inpainted_preview = image_cv_processed.copy() # Inisialisasi dengan gambar saat ini
+        
         if canvas_result.image_data is not None:
             mask_data_canvas = canvas_result.image_data[:, :, 3] # Ambil Alpha channel
             if np.sum(mask_data_canvas > 0) > 0:
-                with st.spinner("Menerapkan Inpainting..."):
-                    mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
-                    mask_resized = cv2.resize(
-                        mask_for_cv2, 
-                        (image_cv_processed.shape[1], image_cv_processed.shape[0]), 
-                        interpolation=cv2.INTER_NEAREST 
-                    )
-                    img_inpainted = apply_inpainting(image_cv_processed, mask_resized, radius_inp, method_flag_inp)
-                    final_pil_image = cv2_to_pil(img_inpainted)
+                # Karena image_data dari canvas_result adalah ukuran CANVAS_WIDTH/HEIGHT
+                # kita perlu resize mask agar sesuai dengan ukuran gambar_cv_processed
+                mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
+                mask_resized = cv2.resize(
+                    mask_for_cv2, 
+                    (image_cv_processed.shape[1], image_cv_processed.shape[0]), 
+                    interpolation=cv2.INTER_NEAREST 
+                )
+                img_inpainted_preview = apply_inpainting(image_cv_processed, mask_resized, radius_inp, method_flag_inp)
+                
+        final_pil_image = cv2_to_pil(img_inpainted_preview) # Tampilkan hasil inpainting di preview
+        
+        # Tambahkan visualisasi coretan langsung ke final_pil_image (hanya untuk tampilan)
+        if canvas_result.image_data is not None and np.sum(canvas_result.image_data[:,:,3]) > 0:
+            # Konversi canvas_result.image_data ke PIL Image
+            drawn_mask_pil = Image.fromarray(canvas_result.image_data)
+            # Resize mask gambar ke ukuran gambar asli
+            drawn_mask_pil_resized = drawn_mask_pil.resize(image_pil_processed.size, Image.Resampling.LANCZOS)
+
+            # Blend mask gambar dengan final_pil_image
+            # Pastikan kedua gambar memiliki mode RGBA untuk blending
+            if final_pil_image.mode != 'RGBA':
+                final_pil_image = final_pil_image.convert('RGBA')
+            
+            # Ini akan menumpuk mask (coretan merah) di atas gambar hasil inpainting
+            final_pil_image = Image.alpha_composite(final_pil_image, drawn_mask_pil_resized)
+
 
     # --- TAB 3: MANUAL (DODGE & BURN) ---
     elif feature_tab == "Manual (Dodge & Burn)":
@@ -295,42 +318,54 @@ else:
             st.markdown("**Pengaturan Kuas D&B**")
             db_mode = st.radio("Pilih Mode Kuas:", ("Dodge (Mencerahkan)", "Burn (Menggelapkan)"), key="db_mode")
             db_strength = st.slider("Kekuatan Kuas", 1, 50, 20, key="db_strength")
-            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db") # FIX: Definisi stroke_width
+            stroke_width = st.slider("Ukuran Kuas", 1, 50, 15, key="stroke_db") 
             
+            # Warna kuas hanya sebagai indikator di kanvas
             stroke_color = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
             
         with col2_db:
             st.markdown("**Kanvas Dodge & Burn** (Gambar di sini)")
+            # Tampilkan kanvas untuk menggambar mask
             canvas_result = run_canvas(
-                image_pil_processed, 
+                image_pil_processed, # Gambar yang sedang diproses sebagai latar belakang di kanvas
                 key="canvas_db", 
-                stroke_width=stroke_width, # FIX: Meneruskan stroke_width
+                stroke_width=stroke_width, 
                 stroke_color=stroke_color
             )
 
         operation_name = "DodgeBurn"
+        img_db_result_preview = image_cv_processed.copy() # Inisialisasi dengan gambar saat ini
+        
         if canvas_result.image_data is not None:
             mask_data_canvas = canvas_result.image_data[:, :, 3] # Ambil Alpha channel
             if np.sum(mask_data_canvas > 0) > 0:
-                with st.spinner("Menerapkan Dodge/Burn..."):
-                    strength = db_strength 
+                strength = db_strength 
                     
-                    if db_mode == "Dodge (Mencerahkan)":
-                         image_filtered = apply_brightness_contrast(image_cv_processed, strength, 0)
-                    else: # Burn (Menggelapkan)
-                         image_filtered = apply_brightness_contrast(image_cv_processed, -strength, 0)
-                    
-                    mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
-                    mask_resized = cv2.resize(
-                        mask_for_cv2, 
-                        (image_cv_processed.shape[1], image_cv_processed.shape[0]), 
-                        interpolation=cv2.INTER_NEAREST 
-                    )
-                    
-                    mask_3channel = (cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR) > 0)
-                    img_db_result = np.where(mask_3channel, image_filtered, image_cv_processed)
-                    
-                    final_pil_image = cv2_to_pil(img_db_result.astype(np.uint8))
+                if db_mode == "Dodge (Mencerahkan)":
+                     image_filtered = apply_brightness_contrast(image_cv_processed, strength, 0)
+                else: 
+                     image_filtered = apply_brightness_contrast(image_cv_processed, -strength, 0)
+                
+                mask_for_cv2 = ((mask_data_canvas > 0).astype(np.uint8) * 255)
+                mask_resized = cv2.resize(
+                    mask_for_cv2, 
+                    (image_cv_processed.shape[1], image_cv_processed.shape[0]), 
+                    interpolation=cv2.INTER_NEAREST 
+                )
+                
+                mask_3channel = (cv2.cvtColor(mask_resized, cv2.COLOR_GRAY2BGR) > 0)
+                img_db_result_preview = np.where(mask_3channel, image_filtered, image_cv_processed)
+                
+        final_pil_image = cv2_to_pil(img_db_result_preview.astype(np.uint8))
+        
+        # Tambahkan visualisasi coretan langsung ke final_pil_image (hanya untuk tampilan)
+        if canvas_result.image_data is not None and np.sum(canvas_result.image_data[:,:,3]) > 0:
+            drawn_mask_pil = Image.fromarray(canvas_result.image_data)
+            drawn_mask_pil_resized = drawn_mask_pil.resize(image_pil_processed.size, Image.Resampling.LANCZOS)
+            
+            if final_pil_image.mode != 'RGBA':
+                final_pil_image = final_pil_image.convert('RGBA')
+            final_pil_image = Image.alpha_composite(final_pil_image, drawn_mask_pil_resized)
 
 
     # --- 5. Tampilkan Hasil & Tombol Aksi ---
@@ -343,18 +378,29 @@ else:
         st.image(image_pil_orig, use_column_width=True)
     with col_proc:
         st.markdown(f"**Hasil Proses: {operation_name}**")
-        st.image(final_pil_image, use_column_width=True)
+        st.image(final_pil_image, use_column_width=True) # Menampilkan hasil blending di sini
 
     st.markdown("---")
     col_act1, col_act2 = st.columns(2)
     with col_act1:
         # Pengecekan penting: pastikan final_pil_image benar-benar berbeda dari state sebelumnya
-        if final_pil_image != st.session_state.processed_image:
+        # Untuk kasus inpainting/D&B, kita perlu mempertimbangkan coretan mask juga
+        if feature_tab == "Auto (Noise & Detail)" and final_pil_image != st.session_state.processed_image:
              if st.button("Terapkan Perubahan Ini"):
                 st.session_state.processed_image = final_pil_image
                 st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
+        elif (feature_tab == "Manual (Inpainting)" or feature_tab == "Manual (Dodge & Burn)"):
+            # Untuk manual, kita menerapkan hasil proses (bukan termasuk coretan visualisasi)
+            # Jadi, kita ambil img_inpainted_preview atau img_db_result_preview
+            if st.button("Terapkan Perubahan Ini"):
+                if feature_tab == "Manual (Inpainting)":
+                    st.session_state.processed_image = cv2_to_pil(img_inpainted_preview)
+                elif feature_tab == "Manual (Dodge & Burn)":
+                    st.session_state.processed_image = cv2_to_pil(img_db_result_preview.astype(np.uint8))
+                st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
         else:
             st.info("Belum ada perubahan yang perlu diterapkan.")
+
 
     with col_act2:
         get_image_download_button(final_pil_image, st.session_state.filename, operation_name)
