@@ -5,6 +5,7 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
+# HAPUS 'import base64'
 
 # --- 1. Konfigurasi Halaman ---
 st.set_page_config(
@@ -35,6 +36,8 @@ def cv2_to_pil(cv2_image):
     except Exception as e:
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
+
+# HAPUS FUNGSI 'pil_to_base64'
 
 def get_image_download_button(img_pil, filename_base, operation_name):
     """Membuat tombol download untuk gambar PIL."""
