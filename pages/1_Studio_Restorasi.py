@@ -114,16 +114,53 @@ def apply_inpainting(img_cv, mask_gray, radius, method_flag):
         return img_cv
 
 # --- FUNGSI UMUM KANVAS (UNTUK INPAINTING & DODGE/BURN) ---
-# **Perbaikan Utama: Menambahkan stroke_width sebagai parameter**
 def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0, 0, 0)"):
-    """Menjalankan kanvas drawable dengan gambar sebagai latar belakang yang ditumpuk."""
-    # Tentukan ukuran
-    aspect_ratio = pil_image.height / pil_image.width
-    CANVAS_WIDTH = 600
-    CANVAS_HEIGHT = min(int(CANVAS_WIDTH * aspect_ratio), 600)
+    """
+    Menjalankan kanvas drawable dengan gambar sebagai latar belakang yang ditumpuk.
+    Memastikan ukuran kanvas tidak melebihi gambar asli (jika kecil) dan dibatasi max 600x600.
+    """
+    
+    # --- 1. Definisi Batas Maksimum & Ukuran Asli ---
+    MAX_CANVAS_WIDTH = 600  # Lebar maksimum yang diizinkan
+    MAX_CANVAS_HEIGHT = 600 # Tinggi maksimum yang diizinkan
+    MIN_CANVAS_SIZE = 150   # Ukuran minimum agar kanvas bisa digunakan
+    
+    # Ambil dimensi asli
+    orig_width, orig_height = pil_image.size
+    aspect_ratio = orig_height / orig_width
+    
+    # --- 2. Perhitungan Ukuran Canvas yang Smart ---
+    
+    # Langkah 1: Batasi ukuran maksimum
+    max_w = min(orig_width, MAX_CANVAS_WIDTH)
+    max_h = min(orig_height, MAX_CANVAS_HEIGHT)
+    
+    # Langkah 2: Hitung ukuran baru berdasarkan batas maksimum yang paling ketat
+    # Jika gambar lebih lebar (landscape)
+    if orig_width / MAX_CANVAS_WIDTH >= orig_height / MAX_CANVAS_HEIGHT:
+        target_width = max_w
+        target_height = int(target_width * aspect_ratio)
+    # Jika gambar lebih tinggi (portrait)
+    else:
+        target_height = max_h
+        target_width = int(target_height / aspect_ratio)
+        
+    # Langkah 3: Pastikan ukuran minimum tercapai
+    CANVAS_WIDTH = max(MIN_CANVAS_SIZE, target_width)
+    CANVAS_HEIGHT = max(MIN_CANVAS_SIZE, target_height)
+
+    # Langkah 4: Hitung ulang dimensi jika rasio aspeknya terlalu jauh dari MIN_CANVAS_SIZE
+    # Jika salah satu dimensi dipaksa ke MIN_CANVAS_SIZE, hitung dimensi lain agar rasio tetap terjaga
+    if CANVAS_WIDTH == MIN_CANVAS_SIZE and CANVAS_HEIGHT > MIN_CANVAS_SIZE:
+        CANVAS_HEIGHT = int(CANVAS_WIDTH * aspect_ratio)
+    elif CANVAS_HEIGHT == MIN_CANVAS_SIZE and CANVAS_WIDTH > MIN_CANVAS_SIZE:
+        CANVAS_WIDTH = int(CANVAS_HEIGHT / aspect_ratio)
+        
+    # Pastikan hasil akhir tetap di bawah batas MAX (walaupun jarang terjadi)
+    CANVAS_WIDTH = min(CANVAS_WIDTH, MAX_CANVAS_WIDTH)
+    CANVAS_HEIGHT = min(CANVAS_HEIGHT, MAX_CANVAS_HEIGHT)
     
     # Resize gambar untuk latar belakang
-    # INTER_NEAREST untuk mask/gambar biner, INTER_AREA/CUBIC untuk gambar warna
     bg_pil_resized = pil_image.resize((CANVAS_WIDTH, CANVAS_HEIGHT), Image.Resampling.LANCZOS)
     
     # Paksa RGBA (penting untuk st_canvas)
@@ -144,7 +181,7 @@ def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0
             left: 0;
             width: {CANVAS_WIDTH}px !important;
             height: {CANVAS_HEIGHT}px !important;
-            object-fit: fill; /* <--- PERBAIKAN: Menggunakan 'fill' agar sesuai dimensi Canvas */
+            object-fit: fill; /* Memastikan gambar mengisi penuh dimensi WxH */
         }}
         /* Menyesuaikan posisi canvas agar menumpuk di atas gambar */
         .canvas-stack-container div[data-testid="stCanvas"] {{
@@ -159,15 +196,14 @@ def run_canvas(pil_image, key, stroke_width, stroke_color, fill_color="rgba(0, 0
     st.markdown(f'<div class="canvas-stack-container">', unsafe_allow_html=True)
     
     # Lapisan 1: Gambar (terlihat)
-    # Catatan: st.image di sini akan dipaksa mengikuti CSS object-fit: fill; di atas
     st.image(bg_pil_resized, width=CANVAS_WIDTH) 
     
     # Lapisan 2: Kanvas (transparan)
     canvas_result = st_canvas(
         fill_color=fill_color,
-        stroke_width=stroke_width, # Digunakan dari parameter
+        stroke_width=stroke_width, 
         stroke_color=stroke_color,
-        background_color="rgba(0, 0, 0, 0)", # Transparan
+        background_color="rgba(0, 0, 0, 0)", 
         background_image=None, 
         update_streamlit=True,
         height=CANVAS_HEIGHT,
@@ -370,14 +406,7 @@ else:
 
     col_act1, col_act2 = st.columns(2)
     with col_act1:
-        # Pengecekan penting: pastikan final_pil_image benar-benar berubah sebelum menerapkan
-        # Catatan: Karena perbandingan antar objek PIL Image bisa rumit, kita gunakan status (final_pil_image != image_pil_processed) sebagai indikasi perubahan dari sisi user.
-        # Atau, buat tombol apply selalu ada jika tab bukan 'Auto' (semua operasi 'Auto' sudah diterapkan secara langsung)
-        is_changed = True # Anggap saja selalu berubah untuk Dodge/Burn/Inpainting agar tombol muncul
-        if feature_tab == "Auto (Noise & Detail)":
-             # Untuk 'Auto', kita perlu mekanisme yang lebih baik untuk deteksi perubahan yang sebenarnya
-             is_changed = False # Biarkan pengguna menekan tombol 'Terapkan' jika mereka ingin melanjutkan
-        
+        # Pengecekan penting: tombol 'Terapkan' selalu muncul agar hasil D&B/Inpainting bisa menjadi dasar proses berikutnya
         if st.button("Terapkan Perubahan Ini"):
             st.session_state.processed_image = final_pil_image
             st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
