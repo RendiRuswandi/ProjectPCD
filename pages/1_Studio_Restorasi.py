@@ -5,6 +5,7 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
+# HAPUS 'import base64'
 
 # --- 1. Konfigurasi Halaman ---
 st.set_page_config(
@@ -35,6 +36,8 @@ def cv2_to_pil(cv2_image):
     except Exception as e:
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
+
+# HAPUS FUNGSI 'pil_to_base64'
 
 def get_image_download_button(img_pil, filename_base, operation_name):
     """Membuat tombol download untuk gambar PIL."""
@@ -360,12 +363,12 @@ else:
         st.image(final_pil_image, use_column_width=True)
 
     # Tombol Aksi di Bawah Gambar
-    col_act1, col2_act = st.columns(2)
+    col_act1, col_act2 = st.columns(2)
     with col_act1:
         # --- PERBAIKAN: Hapus 'use_column_width=True' ---
         if st.button("Terapkan Perubahan Ini"):
             st.session_state.processed_image = final_pil_image
             st.success("Perubahan diterapkan! Anda bisa lanjut ke alat lain.")
-    with col2_act:
+    with col_act2:
         # Tombol download tidak memiliki 'use_column_width'
         get_image_download_button(final_pil_image, st.session_state.filename, operation_name)
