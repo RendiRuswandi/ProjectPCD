@@ -4,5 +4,5 @@ altair==4.2.2
 opencv-python-headless
 scikit-learn
 matplotlib
-pillow
 numpy
+Pillow==9.5.0
