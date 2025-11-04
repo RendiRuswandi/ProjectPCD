@@ -6,7 +6,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- PERBAIKAN: Sembunyikan Navigasi Sidebar di Halaman Ini ---
+# --- Sembunyikan Navigasi Sidebar di Halaman Ini ---
 st.markdown(
     """
     <style>
@@ -25,7 +25,7 @@ st.markdown("<h1 style='text-align: center;'>Studio Restorasi Foto</h1>", unsafe
 st.markdown("<p style='text-align: center; font-size: 1.1rem;'>Perbaiki, pulihkan, dan tingkatkan kualitas foto lama Anda.</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- PERBAIKAN: Tombol di Tengah ---
+# --- Tombol di Tengah ---
 col1, col2, col3 = st.columns([1.5, 2, 1.5]) 
 with col2:
     st.markdown(
