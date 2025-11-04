@@ -5,7 +5,7 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io
 import math
-# HAPUS 'import base64'
+import base64 # <-- IMPORT BARU
 
 # --- 1. Konfigurasi Halaman ---
 st.set_page_config(
@@ -37,7 +37,17 @@ def cv2_to_pil(cv2_image):
         st.error(f"Error konversi CV2 ke PIL: {e}")
         return None
 
-# HAPUS FUNGSI 'pil_to_base64'
+# --- FUNGSI HELPER BARU UNTUK MEMPERBAIKI KANVAS ---
+def pil_to_base64(pil_image):
+    """Konversi PIL Image ke base64 data URL."""
+    # Pastikan RGBA untuk format PNG
+    if pil_image.mode != 'RGBA':
+        pil_image = pil_image.convert('RGBA')
+    
+    buffered = io.BytesIO()
+    pil_image.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{img_str}"
 
 def get_image_download_button(img_pil, filename_base, operation_name):
     """Membuat tombol download untuk gambar PIL."""
@@ -248,11 +258,14 @@ else:
             if bg_pil_resized_inp.mode != 'RGBA':
                 bg_pil_resized_inp = bg_pil_resized_inp.convert('RGBA')
             
+            # --- PERBAIKAN KUNCI: Gunakan base64 ---
+            bg_url = pil_to_base64(bg_pil_resized_inp)
+            
             canvas_result_inpainting = st_canvas(
                 fill_color="rgba(255, 0, 0, 0.5)", # Coretan MERAH TRANSLUSEN
                 stroke_width=stroke_width_inp,
                 stroke_color="rgba(0, 0, 0, 0)",
-                background_image=bg_pil_resized_inp, # <-- PERBAIKAN: Gunakan PIL RGBA
+                background_image=bg_url, # <-- PERBAIKAN: Gunakan URL base64
                 update_streamlit=True,
                 height=CANVAS_HEIGHT,
                 width=CANVAS_WIDTH,
@@ -265,7 +278,6 @@ else:
         operation_name = "Inpainting"
         
         if canvas_result_inpainting.image_data is not None:
-            # --- PERBAIKAN MASKER ---
             # Coretan ada di channel Alpha (indeks 3)
             mask_data_canvas = canvas_result_inpainting.image_data[:, :, 3] 
 
@@ -308,6 +320,9 @@ else:
             if bg_pil_resized_db.mode != 'RGBA':
                 bg_pil_resized_db = bg_pil_resized_db.convert('RGBA')
             
+            # --- PERBAIKAN KUNCI: Gunakan base64 ---
+            bg_url_db = pil_to_base64(bg_pil_resized_db)
+            
             # Ubah warna coretan berdasarkan mode
             stroke_color_db = "rgba(255, 255, 255, 0.3)" if db_mode == "Dodge (Mencerahkan)" else "rgba(0, 0, 0, 0.3)"
             
@@ -315,7 +330,7 @@ else:
                 fill_color="rgba(0, 0, 0, 0)",
                 stroke_width=stroke_width_db,
                 stroke_color=stroke_color_db,
-                background_image=bg_pil_resized_db, # <-- PERBAIKAN: Gunakan PIL RGBA
+                background_image=bg_url_db, # <-- PERBAIKAN: Gunakan URL base64
                 update_streamlit=True,
                 height=CANVAS_HEIGHT_DB,
                 width=CANVAS_WIDTH_DB,
@@ -328,7 +343,6 @@ else:
         operation_name = "DodgeBurn"
 
         if canvas_result_db.image_data is not None:
-            # --- PERBAIKAN MASKER ---
             # Ambil masker dari channel Alpha
             mask_data_db = canvas_result_db.image_data[:, :, 3] 
 
